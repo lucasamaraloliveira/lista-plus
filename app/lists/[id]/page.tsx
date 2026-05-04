@@ -422,11 +422,11 @@ export default function ListDetail() {
               </p>
             </div>
             
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <div className="flex bg-slate-100 p-1 rounded-xl">
                 <button 
                   onClick={() => setSortBy('date')}
-                  className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-tight rounded-lg transition-all ${
+                  className={`px-2 sm:px-3 py-1.5 text-[10px] font-bold uppercase tracking-tight rounded-lg transition-all ${
                     sortBy === 'date' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
                   }`}
                 >
@@ -434,7 +434,7 @@ export default function ListDetail() {
                 </button>
                 <button 
                   onClick={() => setSortBy('name')}
-                  className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-tight rounded-lg transition-all ${
+                  className={`px-2 sm:px-3 py-1.5 text-[10px] font-bold uppercase tracking-tight rounded-lg transition-all ${
                     sortBy === 'name' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
                   }`}
                 >
@@ -442,120 +442,15 @@ export default function ListDetail() {
                 </button>
               </div>
 
-              <Dialog.Root open={isAddItemOpen} onOpenChange={(open) => {
-              if (!open) handleCloseForm();
-              else setIsAddItemOpen(true);
-            }}>
-              <Dialog.Trigger asChild>
-                <button className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg shadow-indigo-100 transition-colors">
-                  + Novo Item
-                </button>
-              </Dialog.Trigger>
-              <Dialog.Portal>
-                <Dialog.Overlay className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-                <Dialog.Content className="fixed left-[50%] top-[50%] z-50 grid w-full max-w-md translate-x-[-50%] translate-y-[-50%] gap-4 border border-slate-100 bg-white p-6 shadow-2xl duration-200 sm:rounded-3xl">
-                  <Dialog.Title className="text-xl font-bold text-slate-800">{editingItem ? "Editar Produto" : "Novo Produto"}</Dialog.Title>
-                  <form onSubmit={handleAddItem} className="space-y-4">
-                    <div>
-                      <label className="text-sm font-bold text-slate-600">Nome</label>
-                      <input 
-                        type="text" required value={newItemName} onChange={e => setNewItemName(e.target.value)}
-                        className="mt-1 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all" 
-                      />
-                    </div>
-                    <div className="flex gap-4">
-                      <div className="flex-1">
-                        <label className="text-sm font-bold text-slate-600">Quantidade</label>
-                        <input 
-                          type="number" min="0.01" step="0.01" required value={newItemQuantity} onChange={e => setNewItemQuantity(Number(e.target.value))}
-                          className="mt-1 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all" 
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <label className="text-sm font-bold text-slate-600">Medida</label>
-                        <Select.Root value={newItemUnit} onValueChange={(val) => setNewItemUnit(val as UnitType)}>
-                          <Select.Trigger className="mt-1 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all flex items-center justify-between">
-                            <Select.Value />
-                            <Select.Icon>
-                              <ChevronDown className="w-4 h-4 text-slate-500" />
-                            </Select.Icon>
-                          </Select.Trigger>
-                          <Select.Portal>
-                            <Select.Content className="overflow-hidden bg-white rounded-2xl shadow-xl border border-slate-100 z-50">
-                              <Select.Viewport className="p-2">
-                                <Select.Item value="unidade" className="relative flex items-center px-8 py-2 text-sm font-medium text-slate-700 rounded-xl hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700 outline-none cursor-pointer data-[highlighted]:bg-indigo-50 data-[highlighted]:text-indigo-700 transition-colors">
-                                  <Select.ItemText>Unidade(s)</Select.ItemText>
-                                  <Select.ItemIndicator className="absolute left-2 inline-flex items-center">
-                                    <Check className="w-4 h-4 text-indigo-600" />
-                                  </Select.ItemIndicator>
-                                </Select.Item>
-                                <Select.Item value="pacote" className="relative flex items-center px-8 py-2 text-sm font-medium text-slate-700 rounded-xl hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700 outline-none cursor-pointer data-[highlighted]:bg-indigo-50 data-[highlighted]:text-indigo-700 transition-colors">
-                                  <Select.ItemText>Pacote(s)</Select.ItemText>
-                                  <Select.ItemIndicator className="absolute left-2 inline-flex items-center">
-                                    <Check className="w-4 h-4 text-indigo-600" />
-                                  </Select.ItemIndicator>
-                                </Select.Item>
-                                <Select.Item value="caixa" className="relative flex items-center px-8 py-2 text-sm font-medium text-slate-700 rounded-xl hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700 outline-none cursor-pointer data-[highlighted]:bg-indigo-50 data-[highlighted]:text-indigo-700 transition-colors">
-                                  <Select.ItemText>Caixa(s)</Select.ItemText>
-                                  <Select.ItemIndicator className="absolute left-2 inline-flex items-center">
-                                    <Check className="w-4 h-4 text-indigo-600" />
-                                  </Select.ItemIndicator>
-                                </Select.Item>
-                              </Select.Viewport>
-                            </Select.Content>
-                          </Select.Portal>
-                        </Select.Root>
-                      </div>
-                    </div>
-                    <div className="flex gap-4">
-                      <div className="flex-1">
-                        <label className="text-sm font-bold text-slate-600">Categoria</label>
-                        <Select.Root value={newItemCategory} onValueChange={(val) => setNewItemCategory(val)}>
-                          <Select.Trigger className="mt-1 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all flex items-center justify-between">
-                            <Select.Value />
-                            <Select.Icon>
-                              <ChevronDown className="w-4 h-4 text-slate-500" />
-                            </Select.Icon>
-                          </Select.Trigger>
-                          <Select.Portal>
-                            <Select.Content className="overflow-hidden bg-white rounded-2xl shadow-xl border border-slate-100 z-50 max-h-[300px]">
-                              <Select.Viewport className="p-2">
-                                {list.categories.map(cat => (
-                                  <Select.Item key={cat} value={cat} className="relative flex items-center px-8 py-2 text-sm font-medium text-slate-700 rounded-xl hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700 outline-none cursor-pointer data-[highlighted]:bg-indigo-50 data-[highlighted]:text-indigo-700 transition-colors">
-                                    <Select.ItemText>{cat}</Select.ItemText>
-                                    <Select.ItemIndicator className="absolute left-2 inline-flex items-center">
-                                      <Check className="w-4 h-4 text-indigo-600" />
-                                    </Select.ItemIndicator>
-                                  </Select.Item>
-                                ))}
-                              </Select.Viewport>
-                            </Select.Content>
-                          </Select.Portal>
-                        </Select.Root>
-                      </div>
-                      <div className="flex-1">
-                        <label className="text-sm font-bold text-slate-600">Valor Total (R$) <span className="font-medium text-slate-400 opacity-80">(Op)</span></label>
-                        <input 
-                          type="text"
-                          value={newItemPrice}
-                          onChange={e => setNewItemPrice(formatCurrency(e.target.value))}
-                          className="mt-1 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all" 
-                          placeholder="0,00"
-                        />
-                      </div>
-                    </div>
-                    <div className="mt-6 flex justify-end gap-3 pt-4 border-t border-slate-100">
-                      <Dialog.Close asChild>
-                        <button type="button" className="px-5 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition-colors">Cancelar</button>
-                      </Dialog.Close>
-                      <button type="submit" className="px-5 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-100 transition-colors">Salvar</button>
-                    </div>
-                  </form>
-                </Dialog.Content>
-              </Dialog.Portal>
-            </Dialog.Root>
+              <button 
+                onClick={() => setIsAddItemOpen(true)}
+                className="hidden sm:flex bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg shadow-indigo-100 transition-colors items-center gap-2"
+              >
+                <Plus size={18} />
+                Novo Item
+              </button>
+            </div>
           </div>
-        </div>
 
           <div className="space-y-4 overflow-y-auto pr-2 pb-32 lg:pb-4 flex-1">
             {items.length === 0 ? (
@@ -672,58 +567,6 @@ export default function ListDetail() {
             </div>
           </div>
 
-          {/* Collaborators / Sharing */}
-          <div className="bg-amber-50 rounded-3xl border border-amber-100 p-6 shrink-0">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xs font-bold text-amber-800 uppercase tracking-widest">Membros</h3>
-              <Dialog.Root open={isShareOpen} onOpenChange={setIsShareOpen}>
-                <Dialog.Trigger asChild>
-                  <button className="bg-amber-200 hover:bg-amber-300 text-amber-900 px-3 py-1.5 rounded-xl text-xs font-bold transition-colors shadow-sm">
-                    + Convidar
-                  </button>
-                </Dialog.Trigger>
-                <Dialog.Portal>
-                  <Dialog.Overlay className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-                  <Dialog.Content className="fixed left-[50%] top-[50%] z-50 grid w-full max-w-md translate-x-[-50%] translate-y-[-50%] gap-4 border border-slate-100 bg-white p-6 shadow-2xl duration-200 sm:rounded-3xl">
-                    <Dialog.Title className="text-xl font-bold text-slate-800">Compartilhar Lista</Dialog.Title>
-                    <Dialog.Description className="text-sm font-medium text-slate-500">
-                      Adicione o e-mail (Conta Google) de quem você quer convidar.
-                    </Dialog.Description>
-                    <form onSubmit={handleShare} className="flex flex-col gap-4 mt-2">
-                      <div>
-                        <label className="text-sm font-bold text-slate-600">E-mail</label>
-                        <input 
-                          type="email" required value={shareEmail} onChange={e => setShareEmail(e.target.value)}
-                          className="mt-1 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                          placeholder="email@gmail.com" 
-                        />
-                      </div>
-                      <div className="mt-4 flex justify-end gap-3 pt-4 border-t border-slate-100">
-                        <Dialog.Close asChild>
-                          <button type="button" className="px-5 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition-colors">Cancelar</button>
-                        </Dialog.Close>
-                        <button type="submit" className="px-5 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-100 transition-colors">Adicionar</button>
-                      </div>
-                    </form>
-                  </Dialog.Content>
-                </Dialog.Portal>
-              </Dialog.Root>
-            </div>
-            
-            <div className="space-y-3">
-              {list.members.map(m => (
-                <div key={m} className="flex items-center gap-3 bg-white/50 border border-amber-100 p-2.5 rounded-2xl shadow-sm">
-                  <div className="w-8 h-8 rounded-full bg-amber-200 border-2 border-amber-50 flex items-center justify-center font-bold text-amber-800 text-xs shrink-0">
-                    {m.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="text-sm truncate min-w-0 flex-1">
-                    <p className="font-bold text-amber-900 truncate">{m}</p>
-                    <p className="text-xs text-amber-700/70 font-medium">{m === list.ownerId ? 'Proprietário' : 'Convidado'}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
 
       </div>
@@ -866,6 +709,240 @@ export default function ListDetail() {
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
+
+      {/* Share / Invite Dialog */}
+      <Dialog.Root open={isShareOpen} onOpenChange={setIsShareOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <Dialog.Content className="fixed left-[50%] top-[50%] z-50 grid w-full max-sm:w-[calc(100%-2rem)] max-w-sm translate-x-[-50%] translate-y-[-50%] gap-6 border border-slate-100 bg-white p-8 shadow-2xl duration-200 rounded-3xl">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mb-4">
+                <Share2 size={28} className="text-amber-600" />
+              </div>
+              <Dialog.Title className="text-xl font-bold text-slate-800 mb-2">Compartilhar Lista</Dialog.Title>
+              <Dialog.Description className="text-slate-500 font-medium">
+                Convide outras pessoas para visualizar e editar esta lista em tempo real.
+              </Dialog.Description>
+            </div>
+            <form onSubmit={handleShare} className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">E-mail (Google)</label>
+                <input 
+                  type="email" 
+                  required 
+                  value={shareEmail} 
+                  onChange={e => setShareEmail(e.target.value)}
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-slate-700"
+                  placeholder="exemplo@gmail.com" 
+                />
+              </div>
+              
+              <div className="space-y-2 mt-4">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Membros Atuais</label>
+                <div className="max-h-[120px] overflow-y-auto space-y-2 pr-2">
+                  {list.members.map(m => (
+                    <div key={m} className="flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-100">
+                      <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-700 shrink-0">
+                        {m.charAt(0).toUpperCase()}
+                      </div>
+                      <span className="text-xs font-semibold text-slate-600 truncate">{m}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <Dialog.Close asChild>
+                  <button type="button" className="flex-1 px-5 py-3 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-2xl transition-colors">
+                    Fechar
+                  </button>
+                </Dialog.Close>
+                <button type="submit" className="flex-1 px-5 py-3 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-2xl shadow-lg shadow-indigo-100 transition-colors">
+                  Convidar
+                </button>
+              </div>
+            </form>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      {/* Add Item Dialog */}
+      <Dialog.Root open={isAddItemOpen} onOpenChange={(open) => {
+        if (!open) handleCloseForm();
+        else setIsAddItemOpen(true);
+      }}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <Dialog.Content className="fixed left-[50%] top-[50%] z-50 grid w-full max-w-md translate-x-[-50%] translate-y-[-50%] gap-4 border border-slate-100 bg-white p-6 shadow-2xl duration-200 sm:rounded-3xl">
+            <Dialog.Title className="text-xl font-bold text-slate-800">{editingItem ? "Editar Produto" : "Novo Produto"}</Dialog.Title>
+            <form onSubmit={handleAddItem} className="space-y-4">
+              <div>
+                <label className="text-sm font-bold text-slate-600">Nome</label>
+                <input 
+                  type="text" required value={newItemName} onChange={e => setNewItemName(e.target.value)}
+                  className="mt-1 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all" 
+                />
+              </div>
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label className="text-sm font-bold text-slate-600">Quantidade</label>
+                  <input 
+                    type="number" min="0.01" step="0.01" required value={newItemQuantity} onChange={e => setNewItemQuantity(Number(e.target.value))}
+                    className="mt-1 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all" 
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-sm font-bold text-slate-600">Medida</label>
+                  <Select.Root value={newItemUnit} onValueChange={(val) => setNewItemUnit(val as UnitType)}>
+                    <Select.Trigger className="mt-1 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all flex items-center justify-between">
+                      <Select.Value />
+                      <Select.Icon>
+                        <ChevronDown className="w-4 h-4 text-slate-500" />
+                      </Select.Icon>
+                    </Select.Trigger>
+                    <Select.Portal>
+                      <Select.Content className="overflow-hidden bg-white rounded-2xl shadow-xl border border-slate-100 z-50">
+                        <Select.Viewport className="p-2">
+                          <Select.Item value="unidade" className="relative flex items-center px-8 py-2 text-sm font-medium text-slate-700 rounded-xl hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700 outline-none cursor-pointer data-[highlighted]:bg-indigo-50 data-[highlighted]:text-indigo-700 transition-colors">
+                            <Select.ItemText>Unidade(s)</Select.ItemText>
+                            <Select.ItemIndicator className="absolute left-2 inline-flex items-center">
+                              <Check className="w-4 h-4 text-indigo-600" />
+                            </Select.ItemIndicator>
+                          </Select.Item>
+                          <Select.Item value="pacote" className="relative flex items-center px-8 py-2 text-sm font-medium text-slate-700 rounded-xl hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700 outline-none cursor-pointer data-[highlighted]:bg-indigo-50 data-[highlighted]:text-indigo-700 transition-colors">
+                            <Select.ItemText>Pacote(s)</Select.ItemText>
+                            <Select.ItemIndicator className="absolute left-2 inline-flex items-center">
+                              <Check className="w-4 h-4 text-indigo-600" />
+                            </Select.ItemIndicator>
+                          </Select.Item>
+                          <Select.Item value="caixa" className="relative flex items-center px-8 py-2 text-sm font-medium text-slate-700 rounded-xl hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700 outline-none cursor-pointer data-[highlighted]:bg-indigo-50 data-[highlighted]:text-indigo-700 transition-colors">
+                            <Select.ItemText>Caixa(s)</Select.ItemText>
+                            <Select.ItemIndicator className="absolute left-2 inline-flex items-center">
+                              <Check className="w-4 h-4 text-indigo-600" />
+                            </Select.ItemIndicator>
+                          </Select.Item>
+                        </Select.Viewport>
+                      </Select.Content>
+                    </Select.Portal>
+                  </Select.Root>
+                </div>
+              </div>
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label className="text-sm font-bold text-slate-600">Categoria</label>
+                  <Select.Root value={newItemCategory} onValueChange={(val) => setNewItemCategory(val)}>
+                    <Select.Trigger className="mt-1 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all flex items-center justify-between">
+                      <Select.Value />
+                      <Select.Icon>
+                        <ChevronDown className="w-4 h-4 text-slate-500" />
+                      </Select.Icon>
+                    </Select.Trigger>
+                    <Select.Portal>
+                      <Select.Content className="overflow-hidden bg-white rounded-2xl shadow-xl border border-slate-100 z-50 max-h-[300px]">
+                        <Select.Viewport className="p-2">
+                          {list.categories.map(cat => (
+                            <Select.Item key={cat} value={cat} className="relative flex items-center px-8 py-2 text-sm font-medium text-slate-700 rounded-xl hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700 outline-none cursor-pointer data-[highlighted]:bg-indigo-50 data-[highlighted]:text-indigo-700 transition-colors">
+                              <Select.ItemText>{cat}</Select.ItemText>
+                              <Select.ItemIndicator className="absolute left-2 inline-flex items-center">
+                                <Check className="w-4 h-4 text-indigo-600" />
+                              </Select.ItemIndicator>
+                            </Select.Item>
+                          ))}
+                        </Select.Viewport>
+                      </Select.Content>
+                    </Select.Portal>
+                  </Select.Root>
+                </div>
+                <div className="flex-1">
+                  <label className="text-sm font-bold text-slate-600">Valor Total (R$) <span className="font-medium text-slate-400 opacity-80">(Op)</span></label>
+                  <input 
+                    type="text"
+                    value={newItemPrice}
+                    onChange={e => setNewItemPrice(formatCurrency(e.target.value))}
+                    className="mt-1 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all" 
+                    placeholder="0,00"
+                  />
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end gap-3 pt-4 border-t border-slate-100">
+                <Dialog.Close asChild>
+                  <button type="button" className="px-5 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition-colors">Cancelar</button>
+                </Dialog.Close>
+                <button type="submit" className="px-5 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-100 transition-colors">Salvar</button>
+              </div>
+            </form>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      {/* Share / Invite Dialog */}
+      <Dialog.Root open={isShareOpen} onOpenChange={setIsShareOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <Dialog.Content className="fixed left-[50%] top-[50%] z-50 grid w-full max-sm:w-[calc(100%-2rem)] max-w-sm translate-x-[-50%] translate-y-[-50%] gap-6 border border-slate-100 bg-white p-8 shadow-2xl duration-200 rounded-3xl">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mb-4">
+                <Share2 size={28} className="text-amber-600" />
+              </div>
+              <Dialog.Title className="text-xl font-bold text-slate-800 mb-2">Compartilhar Lista</Dialog.Title>
+              <Dialog.Description className="text-slate-500 font-medium">
+                Convide outras pessoas para visualizar e editar esta lista em tempo real.
+              </Dialog.Description>
+            </div>
+            <form onSubmit={handleShare} className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">E-mail (Google)</label>
+                <input 
+                  type="email" 
+                  required 
+                  value={shareEmail} 
+                  onChange={e => setShareEmail(e.target.value)}
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-slate-700"
+                  placeholder="exemplo@gmail.com" 
+                />
+              </div>
+              
+              <div className="space-y-2 mt-4">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Membros Atuais</label>
+                <div className="max-h-[120px] overflow-y-auto space-y-2 pr-2">
+                  {list.members.map(m => (
+                    <div key={m} className="flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-100">
+                      <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-700 shrink-0">
+                        {m.charAt(0).toUpperCase()}
+                      </div>
+                      <span className="text-xs font-semibold text-slate-600 truncate">{m}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <Dialog.Close asChild>
+                  <button type="button" className="flex-1 px-5 py-3 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-2xl transition-colors">
+                    Fechar
+                  </button>
+                </Dialog.Close>
+                <button type="submit" className="flex-1 px-5 py-3 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-2xl shadow-lg shadow-indigo-100 transition-colors">
+                  Convidar
+                </button>
+              </div>
+            </form>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      {/* Floating Action Button for mobile */}
+      <div className="sm:hidden fixed bottom-32 right-6 z-40">
+        <motion.button 
+          initial={{ scale: 0, rotate: -180 }}
+          animate={{ scale: 1, rotate: 0 }}
+          whileTap={{ scale: 0.9 }}
+          onClick={() => setIsAddItemOpen(true)}
+          className="bg-gradient-to-br from-indigo-600 to-violet-600 text-white w-16 h-16 rounded-full flex items-center justify-center shadow-[0_8px_30px_rgb(79,70,229,0.4)] transition-all border-4 border-white active:shadow-inner"
+        >
+          <Plus size={32} />
+        </motion.button>
+      </div>
 
       {/* Mobile Floating Summary Balloon */}
       <AnimatePresence>
