@@ -1,0 +1,89 @@
+{
+  "entities": {
+    "SharedUser": {
+      "title": "Shared User",
+      "description": "User email who has access, using email because finding by ID requires a directory service",
+      "type": "string"
+    },
+    "ShoppingList": {
+      "title": "Shopping List",
+      "description": "A shopping list shared between users",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the shopping list"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "User ID of the list owner"
+        },
+        "members": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of user IDs who have access"
+        },
+        "categories": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Available categories for this list"
+        },
+        "createdAt": {
+          "type": "timestamp"
+        },
+        "updatedAt": {
+          "type": "timestamp"
+        }
+      },
+      "required": ["name", "ownerId", "members", "createdAt", "updatedAt"]
+    },
+    "ShoppingListItem": {
+      "title": "Shopping List Item",
+      "description": "An item to buy in a shopping list",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "quantity": { "type": "number" },
+        "unit": { 
+          "type": "string",
+          "enum": ["pacote", "caixa", "unidade"]
+        },
+        "category": { "type": "string" },
+        "price": { "type": "number", "description": "Price per unit or total price depending on how user logs it, but let's assume total or price typed by user" },
+        "purchased": { "type": "boolean" },
+        "createdAt": { "type": "timestamp" },
+        "updatedAt": { "type": "timestamp" },
+        "authorId": { "type": "string" }
+      },
+      "required": ["name", "quantity", "unit", "category", "price", "purchased", "createdAt", "updatedAt", "authorId"]
+    },
+    "CollaboratorPresence": {
+      "title": "Collaborator Presence",
+      "description": "Real-time presence tracking for users in a list",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "lastActive": { "type": "timestamp" },
+        "activeItemId": { "type": "string" },
+        "status": { "type": "string", "enum": ["viewing", "editing"] }
+      },
+      "required": ["uid", "email", "displayName", "lastActive", "status"]
+    }
+  },
+  "firestore": {
+    "/lists/{listId}": {
+      "schema": { "$ref": "#/entities/ShoppingList" },
+      "description": "Shopping lists"
+    },
+    "/lists/{listId}/items/{itemId}": {
+      "schema": { "$ref": "#/entities/ShoppingListItem" },
+      "description": "Items in a shopping list"
+    },
+    "/lists/{listId}/presence/{uid}": {
+      "schema": { "$ref": "#/entities/CollaboratorPresence" },
+      "description": "Collaborator presence in a list"
+    }
+  }
+}

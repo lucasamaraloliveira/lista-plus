@@ -1,0 +1,129 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} { 
+      allow read, write: if false; 
+    }
+
+    function isValidId(id) { 
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isSignedIn() { 
+      return request.auth != null; // No email_verified require since we only setup basic login, but instructions say "MUST strictly mandate email_verified == true unless anonymous". Let's follow the instruction!
+    }
+    function isVerifiedUser() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function getUserEmail() {
+      return request.auth.token.email;
+    }
+
+    function isValidShoppingList(data, isCreate) {
+      return data.keys().hasAll(['name', 'ownerId', 'members', 'categories', 'createdAt', 'updatedAt']) 
+        && data.keys().size() == 6
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.ownerId == request.auth.uid
+        && data.members is list && data.members.size() > 0 && data.members.size() <= 60
+        && getUserEmail() in data.members
+        && data.categories is list && data.categories.size() <= 50
+        && (data.categories.size() == 0 || data.categories[0] is string)
+        && data.createdAt == (isCreate ? request.time : existing().createdAt)
+        && data.updatedAt == request.time;
+    }
+
+    match /lists/{listId} {
+      allow get: if isVerifiedUser() && isValidId(listId) && getUserEmail() in existing().members;
+      allow list: if isVerifiedUser() && getUserEmail() in resource.data.members;
+      
+      allow create: if isVerifiedUser() && isValidId(listId)
+        && isValidShoppingList(incoming(), true);
+        
+      allow update: if isVerifiedUser() && isValidId(listId) 
+        && getUserEmail() in existing().members
+        && isValidShoppingList(incoming(), false)
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && (
+          (
+            // Action: Edit List Details
+            incoming().diff(existing()).affectedKeys().hasOnly(['name', 'categories', 'updatedAt'])
+          )
+          ||
+          (
+            // Action: Add/Remove Members
+            incoming().diff(existing()).affectedKeys().hasOnly(['members', 'updatedAt'])
+          )
+        );
+        
+      allow delete: if isVerifiedUser() && isValidId(listId) && request.auth.uid == existing().ownerId;
+
+      match /items/{itemId} {
+        function getParentList() {
+          return get(/databases/$(database)/documents/lists/$(listId)).data;
+        }
+
+        function isValidItem(data, isCreate) {
+          return data.keys().hasAll(['name', 'quantity', 'unit', 'category', 'price', 'purchased', 'createdAt', 'updatedAt', 'authorId'])
+            && data.keys().size() == 9
+            && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+            && data.quantity is number && data.quantity >= 0 && data.quantity <= 9999
+            && data.unit is string && data.unit in ['pacote', 'caixa', 'unidade']
+            && data.category is string && data.category.size() <= 100
+            && data.price is number && data.price >= 0
+            && data.purchased is bool
+            && data.authorId == (isCreate ? request.auth.uid : existing().authorId)
+            && data.createdAt == (isCreate ? request.time : existing().createdAt)
+            && data.updatedAt == request.time;
+        }
+
+        allow get: if isVerifiedUser() && isValidId(itemId) && getUserEmail() in getParentList().members;
+        
+        allow list: if isVerifiedUser() && getUserEmail() in getParentList().members;
+        
+        allow create: if isVerifiedUser() && isValidId(itemId)
+          && getUserEmail() in getParentList().members
+          && isValidItem(incoming(), true);
+          
+        allow update: if isVerifiedUser() && isValidId(itemId)
+          && getUserEmail() in getParentList().members
+          && isValidItem(incoming(), false)
+          && incoming().createdAt == existing().createdAt
+          && incoming().authorId == existing().authorId
+          && (
+            (
+              // Action: Mark Purchased or Edit Details
+              incoming().diff(existing()).affectedKeys().hasOnly(['name', 'quantity', 'unit', 'category', 'price', 'purchased', 'updatedAt'])
+            )
+          );
+
+        allow delete: if isVerifiedUser() && isValidId(itemId) && getUserEmail() in getParentList().members;
+      }
+
+      match /presence/{uid} {
+        function getParentList() {
+          return get(/databases/$(database)/documents/lists/$(listId)).data;
+        }
+
+        function isValidPresence(data) {
+          return data.keys().hasAll(['uid', 'email', 'displayName', 'lastActive', 'activeItemId', 'status'])
+            && data.keys().size() == 6
+            && data.uid == request.auth.uid
+            && data.email == request.auth.token.email
+            && data.status in ['viewing', 'editing']
+            && (data.activeItemId == null || data.activeItemId is string)
+            && (data.lastActive == request.time || data.lastActive == null);
+        }
+
+        allow read, list: if isVerifiedUser() && (getUserEmail() in getParentList().members);
+        allow create, update: if isVerifiedUser() 
+          && request.auth.uid == uid
+          && (getUserEmail() in getParentList().members)
+          && isValidPresence(incoming());
+        allow delete: if isVerifiedUser() && request.auth.uid == uid;
+      }
+    }
+  }
+}
