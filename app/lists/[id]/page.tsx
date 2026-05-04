@@ -11,62 +11,9 @@ import { useParams, useRouter } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Select from '@radix-ui/react-select';
 import { motion, AnimatePresence } from "framer-motion";
+import { LoadingScreen } from "@/components/loading-screen";
 
-// Premium Loading Component
-const LoadingScreen = () => (
-  <div className="h-[100dvh] flex flex-col items-center justify-center bg-slate-50 relative overflow-hidden">
-    {/* Abstract Background Decoration */}
-    <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-50 rounded-full blur-[100px] animate-pulse" />
-    <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-violet-50 rounded-full blur-[100px] animate-pulse" style={{ animationDelay: '1s' }} />
-    
-    <div className="relative z-10 flex flex-col items-center">
-      <motion.div 
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.5, ease: "easeOut" }}
-        className="relative mb-8"
-      >
-        {/* Spinning Rings */}
-        <div className="w-24 h-24 border-[3px] border-indigo-100 rounded-full" />
-        <div className="absolute top-0 left-0 w-24 h-24 border-[3px] border-indigo-600 rounded-full border-t-transparent animate-spin" />
-        
-        {/* Floating Icon */}
-        <motion.div 
-          animate={{ y: [0, -8, 0] }}
-          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white p-4 rounded-2xl shadow-xl shadow-indigo-100 border border-indigo-50"
-        >
-          <Package className="text-indigo-600" size={32} />
-        </motion.div>
-      </motion.div>
 
-      <motion.div
-        initial={{ y: 10, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.2, duration: 0.5 }}
-        className="text-center"
-      >
-        <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-2">Lista+</h2>
-        <div className="flex items-center justify-center gap-2 text-slate-500 font-medium text-sm">
-          <span className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-bounce" />
-          <span className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-bounce [animation-delay:0.2s]" />
-          <span className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-bounce [animation-delay:0.4s]" />
-          <span className="ml-1 uppercase tracking-[0.2em] text-[10px] font-black text-indigo-600/60">Sincronizando</span>
-        </div>
-      </motion.div>
-    </div>
-
-    {/* Progress bar simulation */}
-    <div className="absolute bottom-12 w-48 h-1 bg-slate-200 rounded-full overflow-hidden">
-      <motion.div 
-        initial={{ x: "-100%" }}
-        animate={{ x: "100%" }}
-        transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-        className="w-full h-full bg-gradient-to-r from-transparent via-indigo-600 to-transparent"
-      />
-    </div>
-  </div>
-);
 
 export interface Presence {
   uid: string;
@@ -151,6 +98,7 @@ export default function ListDetail() {
   // Share states
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [shareEmail, setShareEmail] = useState("");
+  const [copiedLink, setCopiedLink] = useState(false);
 
   // Budget states
   const [isBudgetOpen, setIsBudgetOpen] = useState(false);
@@ -1244,9 +1192,33 @@ export default function ListDetail() {
                 <Share2 size={28} className="text-amber-600" />
               </div>
               <Dialog.Title className="text-xl font-bold text-slate-800 mb-2">Compartilhar Lista</Dialog.Title>
-              <Dialog.Description className="text-slate-500 font-medium">
-                Convide outras pessoas para visualizar e editar esta lista em tempo real.
+              <Dialog.Description className="text-slate-500 font-medium text-sm">
+                O acesso é automático para o e-mail convidado após o login.
               </Dialog.Description>
+            </div>
+
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Link de Acesso Direto</label>
+              <div className="flex gap-2">
+                <input 
+                  readOnly
+                  type="text"
+                  value={typeof window !== 'undefined' ? window.location.href : ""}
+                  className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-500 outline-none"
+                />
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(window.location.href);
+                    setCopiedLink(true);
+                    setTimeout(() => setCopiedLink(false), 2000);
+                  }}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                    copiedLink ? "bg-emerald-500 text-white" : "bg-indigo-600 text-white hover:bg-indigo-700"
+                  }`}
+                >
+                  {copiedLink ? "Copiado!" : "Copiar"}
+                </button>
+              </div>
             </div>
             <form onSubmit={handleShare} className="space-y-4">
               <div>

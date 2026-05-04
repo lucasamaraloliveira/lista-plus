@@ -8,6 +8,7 @@ import { db, OperationType, handleFirestoreError } from "@/lib/firebase";
 import { ShoppingList } from "@/lib/types";
 import Link from "next/link";
 import * as Dialog from '@radix-ui/react-dialog';
+import { LoadingScreen } from "@/components/loading-screen";
 
 export default function Home() {
   const { user, loading, signIn, signOut } = useAuth();
@@ -51,7 +52,7 @@ export default function Home() {
     return () => unsubscribe();
   }, [user]);
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center">Carregando...</div>;
+  if (loading) return <LoadingScreen />;
 
   if (!user) {
     return (
