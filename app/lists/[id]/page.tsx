@@ -88,6 +88,8 @@ export default function ListDetail() {
     return parseInt(digits, 10) / 100;
   };
 
+  const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   // Delete states
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<ShoppingItem | null>(null);
@@ -111,6 +113,11 @@ export default function ListDetail() {
     const presenceRef = doc(db, "lists", id, "presence", user.uid);
     
     const updatePresence = (itemId: string | null = null, status: 'viewing' | 'editing' = 'viewing') => {
+      // Prevents writing same status twice
+      const presenceKey = `${itemId}-${status}`;
+      if ((window as any).lastPresenceKey === presenceKey) return;
+      (window as any).lastPresenceKey = presenceKey;
+
       setDoc(presenceRef, {
         uid: user.uid,
         email: user.email,
@@ -181,10 +188,9 @@ export default function ListDetail() {
 
   // Sync totalValue to the list document for reports
   useEffect(() => {
-    if (!list || !user || items.length === 0) return;
-    
+    if (!items.length || !list || !id || !user) return;
+
     const currentTotal = items.reduce((acc, item) => acc + (item.price || 0), 0);
-    
     const catTotals: Record<string, number> = {};
     items.forEach(item => {
       if (item.price > 0) {
@@ -192,17 +198,24 @@ export default function ListDetail() {
       }
     });
     
-    // Only update if it actually changed to avoid infinite loops or unnecessary writes
     const hasChanged = list.totalValue !== currentTotal || JSON.stringify(list.categoryTotals) !== JSON.stringify(catTotals);
     
     if (hasChanged) {
-      updateDoc(doc(db, "lists", id), {
-        totalValue: currentTotal,
-        categoryTotals: catTotals,
-        updatedAt: serverTimestamp()
-      }).catch(err => console.error("Failed to sync totalValue:", err));
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+      
+      syncTimerRef.current = setTimeout(() => {
+        updateDoc(doc(db, "lists", id), {
+          totalValue: currentTotal,
+          categoryTotals: catTotals,
+          updatedAt: serverTimestamp()
+        }).catch(err => console.error("Failed to sync totalValue:", err));
+      }, 2000); // 2 second debounce
     }
-  }, [items, list, id, user]);
+
+    return () => {
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    };
+  }, [items, list?.totalValue, list?.categoryTotals, id, user]);
 
   if (loading || loadingData || !list) return <LoadingScreen />;
 
@@ -652,8 +665,6 @@ export default function ListDetail() {
                       {catItems.map(item => (
                         <React.Fragment key={item.id}>
                           <div 
-                          onMouseEnter={() => setSelfActivity(item.id, 'viewing')}
-                          onMouseLeave={() => setSelfActivity(null, 'viewing')}
                           className={`group relative flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-2xl border transition-all ${
                             item.purchased 
                               ? "border-slate-100 bg-slate-50/50 opacity-60" 
