@@ -12,6 +12,62 @@ import * as Dialog from "@radix-ui/react-dialog";
 import * as Select from '@radix-ui/react-select';
 import { motion, AnimatePresence } from "framer-motion";
 
+// Premium Loading Component
+const LoadingScreen = () => (
+  <div className="h-[100dvh] flex flex-col items-center justify-center bg-slate-50 relative overflow-hidden">
+    {/* Abstract Background Decoration */}
+    <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-50 rounded-full blur-[100px] animate-pulse" />
+    <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-violet-50 rounded-full blur-[100px] animate-pulse" style={{ animationDelay: '1s' }} />
+    
+    <div className="relative z-10 flex flex-col items-center">
+      <motion.div 
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+        className="relative mb-8"
+      >
+        {/* Spinning Rings */}
+        <div className="w-24 h-24 border-[3px] border-indigo-100 rounded-full" />
+        <div className="absolute top-0 left-0 w-24 h-24 border-[3px] border-indigo-600 rounded-full border-t-transparent animate-spin" />
+        
+        {/* Floating Icon */}
+        <motion.div 
+          animate={{ y: [0, -8, 0] }}
+          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white p-4 rounded-2xl shadow-xl shadow-indigo-100 border border-indigo-50"
+        >
+          <Package className="text-indigo-600" size={32} />
+        </motion.div>
+      </motion.div>
+
+      <motion.div
+        initial={{ y: 10, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.2, duration: 0.5 }}
+        className="text-center"
+      >
+        <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-2">Lista+</h2>
+        <div className="flex items-center justify-center gap-2 text-slate-500 font-medium text-sm">
+          <span className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-bounce" />
+          <span className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-bounce [animation-delay:0.2s]" />
+          <span className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-bounce [animation-delay:0.4s]" />
+          <span className="ml-1 uppercase tracking-[0.2em] text-[10px] font-black text-indigo-600/60">Sincronizando</span>
+        </div>
+      </motion.div>
+    </div>
+
+    {/* Progress bar simulation */}
+    <div className="absolute bottom-12 w-48 h-1 bg-slate-200 rounded-full overflow-hidden">
+      <motion.div 
+        initial={{ x: "-100%" }}
+        animate={{ x: "100%" }}
+        transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+        className="w-full h-full bg-gradient-to-r from-transparent via-indigo-600 to-transparent"
+      />
+    </div>
+  </div>
+);
+
 export interface Presence {
   uid: string;
   email: string;
@@ -49,6 +105,8 @@ export default function ListDetail() {
 
   // Form states
   const [isAddItemOpen, setIsAddItemOpen] = useState(false);
+  const [isAddCategoryOpen, setIsAddCategoryOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
   const [editingItem, setEditingItem] = useState<ShoppingItem | null>(null);
 
   // Sub-item states
@@ -198,8 +256,7 @@ export default function ListDetail() {
     }
   }, [items, list, id, user]);
 
-  if (loading || loadingData) return <div className="min-h-screen flex items-center justify-center">Carregando...</div>;
-  if (!list) return null;
+  if (loading || loadingData || !list) return <LoadingScreen />;
 
   const handleAddItem = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -421,6 +478,26 @@ export default function ListDetail() {
     }
   };
 
+  const handleAddCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCategoryName.trim() || !user || !id) return;
+
+    try {
+      const cleanName = newCategoryName.trim();
+      if (!list.categories.includes(cleanName)) {
+        await updateDoc(doc(db, "lists", id), {
+          categories: arrayUnion(cleanName),
+          updatedAt: serverTimestamp()
+        });
+      }
+      setNewItemCategory(cleanName);
+      setNewCategoryName("");
+      setIsAddCategoryOpen(false);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `lists/${id}`);
+    }
+  };
+
   const handleUpdateBudget = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -448,62 +525,7 @@ export default function ListDetail() {
 
   const unpurchasedValue = totalValue - purchasedValue;
 
-  if (loadingData || !list) {
-    return (
-      <div className="h-[100dvh] flex flex-col items-center justify-center bg-slate-50 relative overflow-hidden">
-        {/* Abstract Background Decoration */}
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-50 rounded-full blur-[100px] animate-pulse" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-violet-50 rounded-full blur-[100px] animate-pulse" style={{ animationDelay: '1s' }} />
-        
-        <div className="relative z-10 flex flex-col items-center">
-          <motion.div 
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ duration: 0.5, ease: "easeOut" }}
-            className="relative mb-8"
-          >
-            {/* Spinning Rings */}
-            <div className="w-24 h-24 border-[3px] border-indigo-100 rounded-full" />
-            <div className="absolute top-0 left-0 w-24 h-24 border-[3px] border-indigo-600 rounded-full border-t-transparent animate-spin" />
-            
-            {/* Floating Icon */}
-            <motion.div 
-              animate={{ y: [0, -8, 0] }}
-              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white p-4 rounded-2xl shadow-xl shadow-indigo-100 border border-indigo-50"
-            >
-              <Package className="text-indigo-600" size={32} />
-            </motion.div>
-          </motion.div>
 
-          <motion.div
-            initial={{ y: 10, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.2, duration: 0.5 }}
-            className="text-center"
-          >
-            <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-2">Lista+</h2>
-            <div className="flex items-center justify-center gap-2 text-slate-500 font-medium text-sm">
-              <span className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-bounce" />
-              <span className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-bounce [animation-delay:0.2s]" />
-              <span className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-bounce [animation-delay:0.4s]" />
-              <span className="ml-1 uppercase tracking-[0.2em] text-[10px] font-black text-indigo-600/60">Sincronizando</span>
-            </div>
-          </motion.div>
-        </div>
-
-        {/* Progress bar simulation */}
-        <div className="absolute bottom-12 w-48 h-1 bg-slate-200 rounded-full overflow-hidden">
-          <motion.div 
-            initial={{ x: "-100%" }}
-            animate={{ x: "100%" }}
-            transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-            className="w-full h-full bg-gradient-to-r from-transparent via-indigo-600 to-transparent"
-          />
-        </div>
-      </div>
-    );
-  }
 
   const categoriesSet = new Set(items.map(i => i.category));
   const activeCategories = Array.from(categoriesSet).sort();
@@ -582,7 +604,7 @@ export default function ListDetail() {
       </header>
 
       {/* Main Content Bento Grid */}
-      <div className="grid grid-cols-12 gap-4 flex-grow min-h-0">
+      <div className="grid grid-cols-12 gap-4 flex-grow min-h-0 overflow-hidden">
         
         {/* Active Shopping List */}
         <div className="col-span-12 lg:col-span-8 bg-white rounded-3xl shadow-sm border border-slate-100 p-4 sm:p-6 flex flex-col min-h-0">
@@ -807,7 +829,7 @@ export default function ListDetail() {
         </div>
 
         {/* Right Sidebar Data - Hidden on Mobile */}
-        <div className="hidden lg:flex col-span-4 flex-col gap-4 overflow-y-auto min-h-0">
+        <div className="hidden lg:flex col-span-4 flex-col gap-4 overflow-y-auto min-h-0 pr-2 pb-10 custom-scrollbar h-full">
           
           {/* Summary Dashboard Card */}
           <div className="bg-indigo-900 rounded-3xl p-6 text-white shadow-xl shadow-indigo-200 shrink-0 relative overflow-hidden">
@@ -827,7 +849,7 @@ export default function ListDetail() {
           <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm shrink-0">
             <h3 className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Comprado (Total: R$ {purchasedValue.toFixed(2).replace('.', ',')})</h3>
             <div className="space-y-3 mt-4">
-              {items.filter(i => i.purchased).slice(0, 3).map(item => (
+              {items.filter(i => i.purchased).map(item => (
                 <div key={item.id} className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                   <span className="text-sm font-semibold text-slate-600 truncate mr-2">{item.name}</span>
                   <span className="text-[10px] font-bold text-slate-400 bg-slate-200 px-2 py-1 rounded-md shrink-0">R$ {item.price.toFixed(2)}</span>
@@ -841,7 +863,7 @@ export default function ListDetail() {
 
           {/* Category Distribution Chart */}
           {items.some(i => i.price > 0) && (
-            <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm overflow-hidden flex flex-col gap-4">
+            <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm overflow-hidden flex flex-col gap-4 shrink-0">
               <h3 className="text-slate-400 text-xs font-bold uppercase tracking-wider">Categorias</h3>
               
               {(() => {
@@ -1175,6 +1197,16 @@ export default function ListDetail() {
                               </Select.ItemIndicator>
                             </Select.Item>
                           ))}
+                          <div className="border-t border-slate-100 my-1 pt-1">
+                            <button 
+                              type="button"
+                              onClick={() => setIsAddCategoryOpen(true)}
+                              className="w-full flex items-center gap-2 px-8 py-2 text-sm font-bold text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors text-left"
+                            >
+                              <Plus size={14} />
+                              Nova Categoria...
+                            </button>
+                          </div>
                         </Select.Viewport>
                       </Select.Content>
                     </Select.Portal>
@@ -1374,6 +1406,50 @@ export default function ListDetail() {
                 </div>
               </form>
             </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+      {/* New Category Dialog */}
+      <Dialog.Root open={isAddCategoryOpen} onOpenChange={setIsAddCategoryOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <Dialog.Content className="fixed left-[50%] top-[50%] z-[70] w-full max-w-sm translate-x-[-50%] translate-y-[-50%] border border-slate-100 bg-white shadow-2xl duration-200 rounded-[2rem] p-6 outline-none">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="bg-indigo-100 p-2 rounded-xl text-indigo-600">
+                <Plus size={20} />
+              </div>
+              <Dialog.Title className="text-lg font-bold text-slate-800">Nova Categoria</Dialog.Title>
+            </div>
+            
+            <form onSubmit={handleAddCategory} className="space-y-4">
+              <div>
+                <label className="text-sm font-bold text-slate-600">Nome da Categoria</label>
+                <input 
+                  autoFocus
+                  type="text"
+                  value={newCategoryName}
+                  onChange={e => setNewCategoryName(e.target.value)}
+                  className="mt-1 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all" 
+                  placeholder="Ex: Pet Shop, Churrasco..."
+                />
+              </div>
+              
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                <button 
+                  type="button" 
+                  onClick={() => setIsAddCategoryOpen(false)}
+                  className="px-5 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  className="px-5 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-100 transition-colors"
+                >
+                  Criar Categoria
+                </button>
+              </div>
+            </form>
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
