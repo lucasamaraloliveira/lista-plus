@@ -6,6 +6,7 @@ export interface ShoppingList {
   ownerId: string;
   members: string[]; // List of user.uid who have access
   categories: string[];
+  budget?: number;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

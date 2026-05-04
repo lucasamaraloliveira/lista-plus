@@ -17,7 +17,7 @@ export interface Presence {
 import { motion, AnimatePresence } from "motion/react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Select from '@radix-ui/react-select';
 
@@ -28,6 +28,17 @@ export default function ListDetail() {
   
   const [list, setList] = useState<ShoppingList | null>(null);
   const [items, setItems] = useState<ShoppingItem[]>([]);
+  const [sortBy, setSortBy] = useState<'date' | 'name'>('date');
+  
+  const sortedItems = useMemo(() => {
+    return [...items].sort((a, b) => {
+      if (sortBy === 'name') {
+        return a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' });
+      }
+      return (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0);
+    });
+  }, [items, sortBy]);
+
   const [loadingData, setLoadingData] = useState(true);
   const [collaborators, setCollaborators] = useState<Presence[]>([]);
 
@@ -70,6 +81,10 @@ export default function ListDetail() {
   // Share states
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [shareEmail, setShareEmail] = useState("");
+
+  // Budget states
+  const [isBudgetOpen, setIsBudgetOpen] = useState(false);
+  const [tempBudget, setTempBudget] = useState("");
 
   // Presence tracking logic
   useEffect(() => {
@@ -136,7 +151,6 @@ export default function ListDetail() {
       snapshot.forEach((doc) => {
         itemsData.push({ id: doc.id, ...doc.data() } as ShoppingItem);
       });
-      itemsData.sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis());
       setItems(itemsData);
       setLoadingData(false);
     }, (error) => handleFirestoreError(error, OperationType.LIST, `lists/${id}/items`));
@@ -291,6 +305,19 @@ export default function ListDetail() {
     }
   };
 
+  const handleUpdateBudget = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await updateDoc(doc(db, "lists", id), {
+        budget: parseCurrencyToNumber(tempBudget),
+        updatedAt: serverTimestamp()
+      });
+      setIsBudgetOpen(false);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `lists/${id}`);
+    }
+  };
+
   const totalValue = items.reduce((acc, item) => acc + (item.price || 0), 0);
   const purchasedValue = items.filter(i => i.purchased).reduce((acc, item) => acc + (item.price || 0), 0);
   const unpurchasedValue = items.filter(i => !i.purchased).reduce((acc, item) => acc + (item.price || 0), 0);
@@ -341,6 +368,29 @@ export default function ListDetail() {
             )}
           </div>
 
+          <button 
+            onClick={() => {
+              setTempBudget(list.budget ? formatCurrency(list.budget) : "");
+              setIsBudgetOpen(true);
+            }}
+            className={`flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs font-bold px-2 sm:px-3 py-1 sm:py-1.5 rounded-full border transition-all ${
+              list.budget && totalValue >= list.budget * 0.9 
+                ? "text-red-600 bg-red-50 border-red-200 animate-pulse-subtle" 
+                : "text-slate-600 bg-white border-slate-200 hover:border-indigo-300 shadow-sm"
+            }`}
+          >
+            <div className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${
+              !list.budget ? "bg-slate-300" :
+              totalValue >= list.budget ? "bg-red-500" :
+              totalValue >= list.budget * 0.9 ? "bg-amber-500" :
+              "bg-emerald-500"
+            }`} />
+            <span className="whitespace-nowrap">
+              <span className="hidden sm:inline">Saldo: </span>
+              {list.budget ? `R$ ${list.budget.toFixed(2).replace('.', ',')}` : "Definir"}
+            </span>
+          </button>
+
           <span className="hidden sm:flex items-center gap-2 text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
             <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
             <span>Sincronizado</span>
@@ -372,7 +422,27 @@ export default function ListDetail() {
               </p>
             </div>
             
-            <Dialog.Root open={isAddItemOpen} onOpenChange={(open) => {
+            <div className="flex items-center gap-3">
+              <div className="flex bg-slate-100 p-1 rounded-xl">
+                <button 
+                  onClick={() => setSortBy('date')}
+                  className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-tight rounded-lg transition-all ${
+                    sortBy === 'date' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  Recentes
+                </button>
+                <button 
+                  onClick={() => setSortBy('name')}
+                  className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-tight rounded-lg transition-all ${
+                    sortBy === 'name' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  A-Z
+                </button>
+              </div>
+
+              <Dialog.Root open={isAddItemOpen} onOpenChange={(open) => {
               if (!open) handleCloseForm();
               else setIsAddItemOpen(true);
             }}>
@@ -485,8 +555,9 @@ export default function ListDetail() {
               </Dialog.Portal>
             </Dialog.Root>
           </div>
+        </div>
 
-          <div className="space-y-4 overflow-y-auto pr-2 pb-4 flex-1">
+          <div className="space-y-4 overflow-y-auto pr-2 pb-32 lg:pb-4 flex-1">
             {items.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8 border-2 border-dashed border-slate-100 rounded-3xl">
                 <Package className="w-12 h-12 mb-4 text-slate-300" />
@@ -494,7 +565,7 @@ export default function ListDetail() {
               </div>
             ) : (
               activeCategories.map(category => {
-                const catItems = items.filter(i => i.category === category);
+                const catItems = sortedItems.filter(i => i.category === category);
                 if (catItems.length === 0) return null;
 
                 return (
@@ -583,6 +654,7 @@ export default function ListDetail() {
             {/* Decoration */}
             <div className="absolute -right-8 -bottom-8 w-32 h-32 bg-indigo-500 rounded-full blur-2xl opacity-20"></div>
           </div>
+
           
           {/* History / Completed Mini Card */}
           <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm shrink-0">
@@ -754,6 +826,47 @@ export default function ListDetail() {
         </Dialog.Portal>
       </Dialog.Root>
 
+      {/* Budget Selection Dialog */}
+      <Dialog.Root open={isBudgetOpen} onOpenChange={setIsBudgetOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <Dialog.Content className="fixed left-[50%] top-[50%] z-50 grid w-full max-sm:w-[calc(100%-2rem)] max-w-sm translate-x-[-50%] translate-y-[-50%] gap-6 border border-slate-100 bg-white p-8 shadow-2xl duration-200 rounded-3xl">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mb-4">
+                <Plus size={28} className="text-emerald-500" />
+              </div>
+              <Dialog.Title className="text-xl font-bold text-slate-800 mb-2">Saldo Disponível</Dialog.Title>
+              <Dialog.Description className="text-slate-500 font-medium">
+                Quanto você pretende gastar nesta compra?
+              </Dialog.Description>
+            </div>
+            <form onSubmit={handleUpdateBudget} className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Valor em Reais</label>
+                <input 
+                  type="text"
+                  autoFocus
+                  value={tempBudget}
+                  onChange={e => setTempBudget(formatCurrency(e.target.value))}
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-lg font-bold text-slate-700"
+                  placeholder="0,00"
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <Dialog.Close asChild>
+                  <button type="button" className="flex-1 px-5 py-3 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-2xl transition-colors">
+                    Cancelar
+                  </button>
+                </Dialog.Close>
+                <button type="submit" className="flex-1 px-5 py-3 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-2xl shadow-lg shadow-indigo-100 transition-colors">
+                  Salvar
+                </button>
+              </div>
+            </form>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
       {/* Mobile Floating Summary Balloon */}
       <AnimatePresence>
         {items.length > 0 && (
@@ -770,9 +883,16 @@ export default function ListDetail() {
               <div className="w-[1px] h-8 bg-indigo-800/50" />
               <div className="flex flex-col text-right">
                 <span className="text-[10px] font-bold text-indigo-300/80 uppercase tracking-widest">Total Geral</span>
-                <span className="text-lg font-black leading-none mt-1 text-emerald-400">R$ {totalValue.toFixed(2).replace('.', ',')}</span>
+                <span className={`text-lg font-black leading-none mt-1 ${
+                  list.budget && totalValue >= list.budget * 0.9 ? "text-red-400 animate-pulse" : "text-emerald-400"
+                }`}>R$ {totalValue.toFixed(2).replace('.', ',')}</span>
               </div>
             </div>
+            {list.budget && totalValue >= list.budget * 0.9 && (
+              <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-red-600 text-white text-[10px] font-black px-4 py-1.5 rounded-full shadow-lg border-2 border-white animate-bounce whitespace-nowrap">
+                ⚠️ SALDO CRÍTICO: {((totalValue / list.budget) * 100).toFixed(0)}%
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
