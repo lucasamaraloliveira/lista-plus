@@ -3,8 +3,21 @@ import './globals.css'; // Global styles
 import { AuthProvider } from '@/hooks/use-auth';
 
 export const metadata: Metadata = {
-  title: 'Lista de Compras Coletiva',
-  description: 'Um aplicativo simples para compartilhar listas de compras',
+  title: 'Lista Plus',
+  description: 'Gerencie suas listas de compras de forma inteligente.',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Lista Plus',
+  },
+  icons: {
+    apple: '/apple-touch-icon.png',
+  },
+};
+
+export const viewport = {
+  themeColor: '#000000',
 };
 
 export default function RootLayout({children}: {children: React.ReactNode}) {
