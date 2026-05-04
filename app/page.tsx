@@ -349,25 +349,28 @@ export default function Home() {
       <Dialog.Root open={isReportModalOpen} onOpenChange={setIsReportModalOpen}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-          <Dialog.Content className="fixed left-[50%] top-[50%] z-50 grid w-full max-w-2xl translate-x-[-50%] translate-y-[-50%] gap-6 border border-slate-100 bg-white p-8 shadow-2xl duration-200 rounded-[2.5rem] outline-none max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-start">
-              <div className="flex items-center gap-3">
-                <div className="bg-indigo-100 p-2.5 rounded-2xl text-indigo-600">
-                  <BarChart2 size={24} />
+          <Dialog.Content className="fixed left-[50%] top-[50%] z-50 w-full max-w-2xl translate-x-[-50%] translate-y-[-50%] border border-slate-100 bg-white shadow-2xl duration-200 rounded-[2.5rem] outline-none max-h-[90vh] flex flex-col overflow-hidden p-4">
+            <div className="p-4 sm:p-6 pb-0 shrink-0">
+              <div className="flex justify-between items-start">
+                <div className="flex items-center gap-3">
+                  <div className="bg-indigo-100 p-2.5 rounded-2xl text-indigo-600">
+                    <BarChart2 size={24} />
+                  </div>
+                  <div>
+                    <Dialog.Title className="text-xl font-bold text-slate-800">Relatório de Gastos</Dialog.Title>
+                    <Dialog.Description className="text-slate-500 font-medium text-sm">
+                      Acompanhamento mensal de suas compras.
+                    </Dialog.Description>
+                  </div>
                 </div>
-                <div>
-                  <Dialog.Title className="text-xl font-bold text-slate-800">Relatório de Gastos</Dialog.Title>
-                  <Dialog.Description className="text-slate-500 font-medium text-sm">
-                    Acompanhamento mensal de suas compras.
-                  </Dialog.Description>
-                </div>
+                <Dialog.Close className="p-2 hover:bg-slate-50 rounded-xl transition-colors">
+                  <Plus className="rotate-45 text-slate-400" size={24} />
+                </Dialog.Close>
               </div>
-              <Dialog.Close className="p-2 hover:bg-slate-50 rounded-xl transition-colors">
-                <Plus className="rotate-45 text-slate-400" size={24} />
-              </Dialog.Close>
             </div>
 
-            <div className="space-y-6 mt-4">
+            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-6">
+              <div className="p-4 sm:p-6 pt-2 space-y-6">
               {/* Calculate monthly aggregated data */}
               {(() => {
                 const monthlyGroups: Record<string, ShoppingList[]> = {};
@@ -440,6 +443,72 @@ export default function Home() {
                             )}
                           </div>
 
+                          <div className="space-y-4">
+                            <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2 mb-3">Distribuição por Categoria</h5>
+                            
+                            {(() => {
+                              const aggregatedCatTotals: Record<string, number> = {};
+                              monthLists.forEach(l => {
+                                if (l.categoryTotals) {
+                                  Object.entries(l.categoryTotals).forEach(([cat, val]) => {
+                                    aggregatedCatTotals[cat] = (aggregatedCatTotals[cat] || 0) + val;
+                                  });
+                                }
+                              });
+
+                              const categories = Object.entries(aggregatedCatTotals).sort((a, b) => b[1] - a[1]);
+                              const totalMonthValue = categories.reduce((sum, [_, val]) => sum + val, 0);
+
+                              if (totalMonthValue === 0) return <p className="text-xs text-slate-400 px-2 italic">Nenhum gasto registrado com preço.</p>;
+
+                              const colors = ["#6366f1", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#06b6d4"];
+                              
+                              let currentPercent = 0;
+                              const gradientParts = categories.map(([cat, val], idx) => {
+                                const percent = (val / totalMonthValue) * 100;
+                                const start = currentPercent;
+                                currentPercent += percent;
+                                return `${colors[idx % colors.length]} ${start}% ${currentPercent}%`;
+                              });
+
+                              return (
+                                <div className="flex flex-col md:flex-row items-center gap-8 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                                  {/* Pie Chart */}
+                                  <div 
+                                    className="w-32 h-32 rounded-full shrink-0 shadow-inner relative"
+                                    style={{ 
+                                      background: `conic-gradient(${gradientParts.join(', ')})`,
+                                    }}
+                                  >
+                                    <div className="absolute inset-4 bg-white rounded-full shadow-sm flex items-center justify-center">
+                                      <BarChart2 size={24} className="text-slate-100" />
+                                    </div>
+                                  </div>
+
+                                  {/* Legend */}
+                                  <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 w-full">
+                                    {categories.map(([cat, val], idx) => (
+                                      <div key={cat} className="flex items-center justify-between gap-3 group">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                          <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: colors[idx % colors.length] }} />
+                                          <span className="text-xs font-bold text-slate-600 truncate">{cat}</span>
+                                        </div>
+                                        <div className="text-right">
+                                          <span className="text-xs font-black text-slate-800">
+                                            {((val / totalMonthValue) * 100).toFixed(0)}%
+                                          </span>
+                                          <span className="text-[10px] font-bold text-slate-400 block -mt-0.5">
+                                            R$ {val.toFixed(2).replace('.', ',')}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+
                           <div className="space-y-2">
                             <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2 mb-3">Listas do Período</h5>
                             {monthLists.map(list => (
@@ -464,19 +533,20 @@ export default function Home() {
                   </div>
                 );
               })()}
-            </div>
 
-            <div className="mt-4 p-5 bg-indigo-50/50 rounded-[2rem] border border-indigo-100/50">
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center shrink-0">
-                  <Calendar className="text-indigo-600" size={16} />
+              <div className="mt-4 p-5 bg-indigo-50/50 rounded-[2rem] border border-indigo-100/50">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center shrink-0">
+                    <Calendar className="text-indigo-600" size={16} />
+                  </div>
+                  <p className="text-xs text-indigo-700/80 font-medium leading-relaxed">
+                    Os relatórios são baseados no **Mês de Referência** configurado em cada lista. Para organizar suas compras antigas, edite a lista e ajuste o mês corretamente.
+                  </p>
                 </div>
-                <p className="text-xs text-indigo-700/80 font-medium leading-relaxed">
-                  Os relatórios são baseados no **Mês de Referência** configurado em cada lista. Para organizar suas compras antigas, edite a lista e ajuste o mês corretamente.
-                </p>
               </div>
             </div>
-          </Dialog.Content>
+          </div>
+        </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
     </div>

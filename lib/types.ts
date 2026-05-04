@@ -9,6 +9,7 @@ export interface ShoppingList {
   budget?: number;
   month?: string; // Format: YYYY-MM
   totalValue?: number; // Cached total value of items
+  categoryTotals?: Record<string, number>; // Cached totals per category
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
