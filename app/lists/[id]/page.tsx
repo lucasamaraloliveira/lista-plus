@@ -1,10 +1,16 @@
 "use client";
 
+import React, { useEffect, useMemo, useState, useRef, Fragment } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { OperationType, handleFirestoreError, db } from "@/lib/firebase";
-import { ShoppingItem, ShoppingList, UnitType } from "@/lib/types";
-import { collection, doc, onSnapshot, query, serverTimestamp, updateDoc, deleteDoc, addDoc, arrayUnion, writeBatch, setDoc } from "firebase/firestore";
+import { ShoppingItem, ShoppingList, UnitType, SubItem } from "@/lib/types";
+import { collection, doc, onSnapshot, query, serverTimestamp, updateDoc, deleteDoc, addDoc, arrayUnion, writeBatch, setDoc, Timestamp } from "firebase/firestore";
 import { ArrowLeft, Check, Copy, Package, Plus, Share2, Trash2, ChevronDown, Pencil, RotateCcw, X, Eraser, Loader2, Eye } from "lucide-react";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import * as Dialog from "@radix-ui/react-dialog";
+import * as Select from '@radix-ui/react-select';
+import { motion, AnimatePresence } from "framer-motion";
 
 export interface Presence {
   uid: string;
@@ -14,12 +20,6 @@ export interface Presence {
   activeItemId: string | null;
   status: 'viewing' | 'editing';
 }
-import { motion, AnimatePresence } from "motion/react";
-import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState, useMemo } from "react";
-import * as Dialog from '@radix-ui/react-dialog';
-import * as Select from '@radix-ui/react-select';
 
 export default function ListDetail() {
   const { id } = useParams() as { id: string };
@@ -45,6 +45,13 @@ export default function ListDetail() {
   // Form states
   const [isAddItemOpen, setIsAddItemOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ShoppingItem | null>(null);
+
+  // Sub-item states
+  const [isAddSubItemOpen, setIsAddSubItemOpen] = useState(false);
+  const [activeParentItemId, setActiveParentItemId] = useState<string | null>(null);
+  const [newSubItemName, setNewSubItemName] = useState("");
+  const [newSubItemQuantity, setNewSubItemQuantity] = useState(1);
+  const [newSubItemPrice, setNewSubItemPrice] = useState("");
   const [newItemName, setNewItemName] = useState("");
   const [newItemQuantity, setNewItemQuantity] = useState(1);
   const [newItemUnit, setNewItemUnit] = useState<UnitType>("unidade");
@@ -161,6 +168,21 @@ export default function ListDetail() {
     };
   }, [user, id, router]);
 
+  // Sync totalValue to the list document for reports
+  useEffect(() => {
+    if (!list || !user || items.length === 0) return;
+    
+    const currentTotal = items.reduce((acc, item) => acc + (item.price || 0), 0);
+    
+    // Only update if it actually changed to avoid infinite loops or unnecessary writes
+    if (list.totalValue !== currentTotal) {
+      updateDoc(doc(db, "lists", id), {
+        totalValue: currentTotal,
+        updatedAt: serverTimestamp()
+      }).catch(err => console.error("Failed to sync totalValue:", err));
+    }
+  }, [items, list, id, user]);
+
   if (loading || loadingData) return <div className="min-h-screen flex items-center justify-center">Carregando...</div>;
   if (!list) return null;
 
@@ -219,10 +241,17 @@ export default function ListDetail() {
 
   const handleTogglePurchase = async (item: ShoppingItem) => {
     try {
-      await updateDoc(doc(db, "lists", id, "items", item.id), {
-        purchased: !item.purchased,
+      const newPurchased = !item.purchased;
+      const updates: any = {
+        purchased: newPurchased,
         updatedAt: serverTimestamp()
-      });
+      };
+
+      if (item.subItems && item.subItems.length > 0) {
+        updates.subItems = item.subItems.map(si => ({ ...si, purchased: newPurchased }));
+      }
+
+      await updateDoc(doc(db, "lists", id, "items", item.id), updates);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `lists/${id}/items/${item.id}`);
     }
@@ -250,6 +279,78 @@ export default function ListDetail() {
       setTimeout(() => setShowUndo(false), 10000);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `lists/${id}/items/${itemToDelete.id}`);
+    }
+  };
+
+  const handleAddSubItem = async (itemId: string, name: string, quantity: number, price: number) => {
+    if (!user || !id) return;
+    const item = items.find(i => i.id === itemId);
+    if (!item) return;
+
+    const newSubItem: SubItem = {
+      id: Math.random().toString(36).substring(7),
+      name,
+      quantity,
+      price,
+      purchased: false,
+      createdAt: Timestamp.now()
+    };
+
+    const updatedSubItems = [...(item.subItems || []), newSubItem];
+    const newTotal = updatedSubItems.reduce((acc, si) => acc + (si.price * si.quantity), 0);
+
+    try {
+      await updateDoc(doc(db, "lists", id, "items", itemId), {
+        subItems: updatedSubItems,
+        price: newTotal,
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `lists/${id}/items/${itemId}/subitems`);
+    }
+  };
+
+  const handleToggleSubItem = async (itemId: string, subItemId: string) => {
+    if (!user || !id) return;
+    const item = items.find(i => i.id === itemId);
+    if (!item || !item.subItems) return;
+
+    const updatedSubItems = item.subItems.map(si => 
+      si.id === subItemId ? { ...si, purchased: !si.purchased } : si
+    );
+
+    // If all sub-items are purchased, mark parent as purchased? Maybe.
+    const allPurchased = updatedSubItems.every(si => si.purchased);
+
+    try {
+      await updateDoc(doc(db, "lists", id, "items", itemId), {
+        subItems: updatedSubItems,
+        purchased: allPurchased,
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `lists/${id}/items/${itemId}/subitems/${subItemId}`);
+    }
+  };
+
+  const handleDeleteSubItem = async (itemId: string, subItemId: string) => {
+    if (!user || !id) return;
+    const item = items.find(i => i.id === itemId);
+    if (!item || !item.subItems) return;
+
+    const updatedSubItems = item.subItems.filter(si => si.id !== subItemId);
+    const newTotal = updatedSubItems.length > 0 
+      ? updatedSubItems.reduce((acc, si) => acc + (si.price * si.quantity), 0)
+      : item.price; // Keep current price if no sub-items left or reset? 
+
+    try {
+      await updateDoc(doc(db, "lists", id, "items", itemId), {
+        subItems: updatedSubItems,
+        price: newTotal,
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `lists/${id}/items/${itemId}/subitems/${subItemId}`);
     }
   };
 
@@ -319,8 +420,18 @@ export default function ListDetail() {
   };
 
   const totalValue = items.reduce((acc, item) => acc + (item.price || 0), 0);
-  const purchasedValue = items.filter(i => i.purchased).reduce((acc, item) => acc + (item.price || 0), 0);
-  const unpurchasedValue = items.filter(i => !i.purchased).reduce((acc, item) => acc + (item.price || 0), 0);
+  
+  const purchasedValue = items.reduce((acc, item) => {
+    if (item.subItems && item.subItems.length > 0) {
+      const siTotal = item.subItems
+        .filter(si => si.purchased)
+        .reduce((sum, si) => sum + (si.price * si.quantity), 0);
+      return acc + siTotal;
+    }
+    return acc + (item.purchased ? (item.price || 0) : 0);
+  }, 0);
+
+  const unpurchasedValue = totalValue - purchasedValue;
 
   const categoriesSet = new Set(items.map(i => i.category));
   const activeCategories = Array.from(categoriesSet).sort();
@@ -407,15 +518,20 @@ export default function ListDetail() {
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-xl font-bold text-slate-800">Itens</h2>
-                {items.some(i => i.price > 0) && (
-                  <button 
-                    onClick={() => setIsClearPricesConfirmOpen(true)}
-                    className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors"
-                    title="Limpar todos os preços"
-                  >
-                    <Eraser size={16} />
-                  </button>
-                )}
+
+                <button 
+                  onClick={() => setIsClearPricesConfirmOpen(true)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl transition-all ${
+                    items.some(i => i.price > 0 || (i.subItems && i.subItems.some(si => si.price > 0))) 
+                      ? "text-slate-400 hover:text-indigo-600 hover:bg-indigo-50" 
+                      : "text-slate-300 cursor-not-allowed opacity-50"
+                  }`}
+                  disabled={!items.some(i => i.price > 0 || (i.subItems && i.subItems.some(si => si.price > 0)))}
+                  title="Limpar todos os preços"
+                >
+                  <Eraser size={16} />
+                  <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">Limpar Preços</span>
+                </button>
               </div>
               <p className="text-sm font-medium text-slate-400">
                 {items.filter(i => i.purchased).length} de {items.length} itens comprados
@@ -468,14 +584,16 @@ export default function ListDetail() {
                     <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest pl-2 mb-2">{category}</h3>
                     <div className="space-y-2">
                       {catItems.map(item => (
-                        <div 
-                          key={item.id} 
+                        <React.Fragment key={item.id}>
+                          <div 
                           onMouseEnter={() => setSelfActivity(item.id, 'viewing')}
                           onMouseLeave={() => setSelfActivity(null, 'viewing')}
                           className={`group relative flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-2xl border transition-all ${
                             item.purchased 
-                              ? "border-slate-100 bg-slate-50/50 opacity-60 line-through" 
-                              : "border-slate-200 bg-white shadow-sm hover:border-indigo-200"
+                              ? "border-slate-100 bg-slate-50/50 opacity-60" 
+                              : item.subItems && item.subItems.some(si => si.purchased)
+                                ? "border-amber-200 bg-amber-50/30 shadow-sm"
+                                : "border-slate-200 bg-white shadow-sm hover:border-indigo-200"
                           }`}
                         >
                           {/* Active collaborator indicator */}
@@ -497,18 +615,41 @@ export default function ListDetail() {
                           />
                           
                           <div className="flex-grow min-w-0">
-                            <p className="font-semibold text-slate-800 truncate">{item.name}</p>
+                            <p className={`font-semibold text-slate-800 truncate ${item.purchased ? "line-through text-slate-400" : ""}`}>
+                              {item.name}
+                            </p>
                             <p className="text-xs font-medium text-slate-500">
                               {item.quantity} {item.unit}
+                              {item.subItems && item.subItems.length > 0 && (
+                                <span className="ml-2 text-amber-600 font-bold">
+                                  ({item.subItems.filter(si => si.purchased).length}/{item.subItems.length} marcas)
+                                </span>
+                              )}
                             </p>
                           </div>
 
-                          <div className="text-right shrink-0">
+                          <div className="text-right shrink-0 mr-2">
                             <p className="font-bold text-slate-800">
                               {item.price > 0 ? `R$ ${item.price.toFixed(2).replace('.', ',')}` : '-'}
                             </p>
+                            {item.subItems && item.subItems.length > 0 && (
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Total Acumulado</p>
+                            )}
                           </div>
                           <div className="flex gap-1">
+                            <button 
+                              onClick={() => {
+                                setActiveParentItemId(item.id);
+                                setNewSubItemName("");
+                                setNewSubItemQuantity(1);
+                                setNewSubItemPrice("");
+                                setIsAddSubItemOpen(true);
+                              }}
+                              className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-xl transition-colors focus:outline-none shrink-0"
+                              title="Adicionar Marca/Variação"
+                            >
+                              <Plus size={16} />
+                            </button>
                             <button 
                               onClick={() => handleOpenEdit(item)}
                               className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-xl transition-colors focus:outline-none shrink-0"
@@ -525,6 +666,41 @@ export default function ListDetail() {
                             </button>
                           </div>
                         </div>
+
+                        {/* Sub-items list */}
+                        {item.subItems && item.subItems.length > 0 && (
+                          <div className="ml-12 mr-4 mb-2 space-y-1 animate-in slide-in-from-top-2 duration-300">
+                            {item.subItems.map(si => (
+                              <div key={si.id} className={`flex items-center justify-between gap-3 p-2.5 rounded-xl border ${
+                                si.purchased ? "bg-slate-50/30 border-slate-100 opacity-60" : "bg-slate-50/80 border-slate-100"
+                              }`}>
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <input 
+                                    type="checkbox"
+                                    checked={si.purchased}
+                                    onChange={() => handleToggleSubItem(item.id, si.id)}
+                                    className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 shrink-0 cursor-pointer"
+                                  />
+                                  <div className="min-w-0">
+                                    <p className={`text-sm font-bold text-slate-700 truncate ${si.purchased ? "line-through" : ""}`}>
+                                      {si.name}
+                                    </p>
+                                    <p className="text-[10px] font-bold text-slate-400">
+                                      {si.quantity}x {si.price > 0 ? `R$ ${si.price.toFixed(2).replace('.', ',')}` : '-'}
+                                    </p>
+                                  </div>
+                                </div>
+                                <button 
+                                  onClick={() => handleDeleteSubItem(item.id, si.id)}
+                                  className="p-1.5 text-slate-300 hover:text-red-500 transition-colors"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </React.Fragment>
                       ))}
                     </div>
                   </div>
@@ -973,6 +1149,83 @@ export default function ListDetail() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Add Sub-item Dialog */}
+      <Dialog.Root open={isAddSubItemOpen} onOpenChange={setIsAddSubItemOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <Dialog.Content className="fixed left-[50%] top-[50%] z-50 grid w-full max-sm:w-[calc(100%-2rem)] max-w-sm translate-x-[-50%] translate-y-[-50%] gap-6 border border-slate-100 bg-white p-8 shadow-2xl duration-200 rounded-[2.5rem] outline-none">
+            <div className="flex flex-col items-center">
+              <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center mb-4 text-indigo-500">
+                <Plus size={28} />
+              </div>
+              <Dialog.Title className="text-xl font-bold text-slate-800 mb-1">Adicionar Marca/Variação</Dialog.Title>
+              <Dialog.Description className="text-slate-500 font-medium mb-4 text-center text-sm">
+                Ex: Marca específica, tamanho ou peso diferente.
+              </Dialog.Description>
+              
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                if (activeParentItemId && newSubItemName.trim()) {
+                  handleAddSubItem(activeParentItemId, newSubItemName.trim(), newSubItemQuantity, Number(newSubItemPrice.replace(/[^\d]/g, '')) / 100);
+                  setIsAddSubItemOpen(false);
+                }
+              }} className="w-full space-y-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Nome / Marca</label>
+                  <input 
+                    type="text" 
+                    autoFocus
+                    required
+                    placeholder="Ex: Marca A, 500ml, etc."
+                    value={newSubItemName}
+                    onChange={e => setNewSubItemName(e.target.value)}
+                    className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-medium"
+                  />
+                </div>
+                
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Qtd</label>
+                    <input 
+                      type="number" 
+                      required
+                      min="1"
+                      value={newSubItemQuantity}
+                      onChange={e => setNewSubItemQuantity(Number(e.target.value))}
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-medium"
+                    />
+                  </div>
+                  <div className="flex-[2]">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Preço Unit.</label>
+                    <input 
+                      type="text" 
+                      value={newSubItemPrice}
+                      onChange={e => setNewSubItemPrice(formatCurrency(e.target.value))}
+                      placeholder="0,00"
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <Dialog.Close asChild>
+                    <button type="button" className="flex-1 px-5 py-3 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-2xl transition-colors">
+                      Cancelar
+                    </button>
+                  </Dialog.Close>
+                  <button 
+                    type="submit"
+                    className="flex-1 px-5 py-3 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-2xl shadow-lg shadow-indigo-100 transition-colors"
+                  >
+                    Adicionar
+                  </button>
+                </div>
+              </form>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
     </div>
   );
