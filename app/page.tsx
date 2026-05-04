@@ -194,12 +194,14 @@ export default function Home() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {lists.map(list => (
-            <div key={list.id} className="bg-white rounded-3xl shadow-sm border border-slate-100 p-5 flex flex-col group hover:border-indigo-200 transition-all">
-              <Link href={`/lists/${list.id}`} className="flex-1 mb-4">
+            <div key={list.id} className="relative bg-white rounded-3xl shadow-sm border border-slate-100 p-5 flex flex-col group hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-50/50 transition-all duration-300">
+              <Link href={`/lists/${list.id}`} className="absolute inset-0 z-0 rounded-3xl" aria-label={`Ver lista ${list.name}`} />
+              
+              <div className="relative z-10 pointer-events-none flex-1 mb-4">
                 <h2 className="text-lg font-bold text-slate-800 mb-3 truncate group-hover:text-indigo-600 transition-colors">
                   {list.name}
                 </h2>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="flex items-center gap-1 text-[10px] font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-full uppercase tracking-wider">
                     <Users size={12} />
                     {list.members.length} {list.members.length === 1 ? 'Membro' : 'Membros'}
@@ -212,24 +214,26 @@ export default function Home() {
                   )}
                 </div>
                 {list.totalValue !== undefined && list.totalValue > 0 && (
-                  <div className="mt-3">
-                    <span className="text-xs font-bold text-slate-400 block mb-1">Gasto Total</span>
-                    <span className="text-lg font-black text-slate-800">R$ {list.totalValue.toFixed(2).replace('.', ',')}</span>
+                  <div className="mt-4 pt-4 border-t border-slate-50">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Gasto Total</span>
+                    <span className="text-2xl font-black text-slate-800 tracking-tight">R$ {list.totalValue.toFixed(2).replace('.', ',')}</span>
                   </div>
                 )}
-              </Link>
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-between mt-auto">
+              </div>
+
+              <div className="relative z-10 pt-4 border-t border-slate-100 flex items-center justify-between mt-auto">
                 <span className="text-[10px] text-slate-400 font-medium">
                   {list.updatedAt ? new Intl.DateTimeFormat('pt-BR').format(list.updatedAt.toDate()) : ''}
                 </span>
-                <div className="flex gap-1 items-center">
+                <div className="flex gap-1 items-center relative z-20">
                   {list.ownerId === user.uid && (
                     <button 
                       onClick={(e) => {
                         e.preventDefault();
+                        e.stopPropagation();
                         handleOpenEditModal(list);
                       }}
-                      className="text-slate-300 hover:text-indigo-600 transition-colors p-1"
+                      className="text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all p-2 rounded-xl"
                       title="Editar nome"
                     >
                       <Pencil size={15} />
@@ -239,9 +243,10 @@ export default function Home() {
                     <button 
                       onClick={(e) => {
                         e.preventDefault();
+                        e.stopPropagation();
                         handleDeleteList(list);
                       }}
-                      className="text-slate-300 hover:text-red-500 transition-colors p-1"
+                      className="text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all p-2 rounded-xl"
                       title="Excluir lista"
                     >
                       <Trash2 size={16} />

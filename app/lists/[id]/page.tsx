@@ -621,7 +621,7 @@ export default function ListDetail() {
                             <p className="text-xs font-medium text-slate-500">
                               {item.quantity} {item.unit}
                               {item.subItems && item.subItems.length > 0 && (
-                                <span className="ml-2 text-amber-600 font-bold">
+                                <span className="text-[10px] text-amber-600 font-bold block sm:inline-block sm:ml-2 mt-0.5 sm:mt-0">
                                   ({item.subItems.filter(si => si.purchased).length}/{item.subItems.length} marcas)
                                 </span>
                               )}
@@ -632,9 +632,9 @@ export default function ListDetail() {
                             <p className="font-bold text-slate-800">
                               {item.price > 0 ? `R$ ${item.price.toFixed(2).replace('.', ',')}` : '-'}
                             </p>
-                            {item.subItems && item.subItems.length > 0 && (
-                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Total Acumulado</p>
-                            )}
+                             {item.subItems && item.subItems.length > 0 && (
+                               <p className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-tighter leading-none mt-1">Acumulado</p>
+                             )}
                           </div>
                           <div className="flex gap-1">
                             <button 
