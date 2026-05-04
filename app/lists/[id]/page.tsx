@@ -1203,7 +1203,7 @@ export default function ListDetail() {
                 <input 
                   readOnly
                   type="text"
-                  value={typeof window !== 'undefined' ? window.location.href : ""}
+                  value={`https://lista-plus.vercel.app/lists/${id}`}
                   className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-500 outline-none"
                 />
                 <button 
