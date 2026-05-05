@@ -106,6 +106,7 @@ export default function ListDetail() {
   const [isBudgetOpen, setIsBudgetOpen] = useState(false);
   const [tempBudget, setTempBudget] = useState("");
 
+  const lastUpdateRef = useRef<number>(0);
   // Presence tracking logic
   useEffect(() => {
     if (!user || !id) return;
@@ -113,10 +114,16 @@ export default function ListDetail() {
     const presenceRef = doc(db, "lists", id, "presence", user.uid);
     
     const updatePresence = (itemId: string | null = null, status: 'viewing' | 'editing' = 'viewing') => {
-      // Prevents writing same status twice
+      const now = Date.now();
       const presenceKey = `${itemId}-${status}`;
-      if ((window as any).lastPresenceKey === presenceKey) return;
+      
+      // Throttle: Only update if status changed OR 30s passed since last update
+      if ((window as any).lastPresenceKey === presenceKey && now - lastUpdateRef.current < 30000) {
+        return;
+      }
+      
       (window as any).lastPresenceKey = presenceKey;
+      lastUpdateRef.current = now;
 
       setDoc(presenceRef, {
         uid: user.uid,
@@ -132,7 +139,6 @@ export default function ListDetail() {
 
     const unsubPresence = onSnapshot(collection(db, "lists", id, "presence"), (snapshot) => {
       const presences: Presence[] = [];
-      const now = Date.now();
       snapshot.forEach((doc) => {
         const data = doc.data() as Presence;
         // Keep only other users
@@ -186,36 +192,31 @@ export default function ListDetail() {
     };
   }, [user, id, router]);
 
-  // Sync totalValue to the list document for reports
-  useEffect(() => {
-    if (!items.length || !list || !id || !user) return;
+  // Helper to sync list totals only when necessary
+  const syncListTotals = async (updatedItems: ShoppingItem[]) => {
+    if (!id || !user) return;
 
-    const currentTotal = items.reduce((acc, item) => acc + (item.price || 0), 0);
+    const currentTotal = updatedItems.reduce((acc, item) => acc + (item.price || 0), 0);
     const catTotals: Record<string, number> = {};
-    items.forEach(item => {
+    updatedItems.forEach(item => {
       if (item.price > 0) {
         catTotals[item.category] = (catTotals[item.category] || 0) + item.price;
       }
     });
     
-    const hasChanged = list.totalValue !== currentTotal || JSON.stringify(list.categoryTotals) !== JSON.stringify(catTotals);
-    
-    if (hasChanged) {
-      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-      
-      syncTimerRef.current = setTimeout(() => {
-        updateDoc(doc(db, "lists", id), {
-          totalValue: currentTotal,
-          categoryTotals: catTotals,
-          updatedAt: serverTimestamp()
-        }).catch(err => console.error("Failed to sync totalValue:", err));
-      }, 2000); // 2 second debounce
-    }
+    // Round to 2 decimal places to avoid floating point issues triggering unwanted updates
+    const roundedTotal = Math.round(currentTotal * 100) / 100;
 
-    return () => {
-      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-    };
-  }, [items, list?.totalValue, list?.categoryTotals, id, user]);
+    try {
+      await updateDoc(doc(db, "lists", id), {
+        totalValue: roundedTotal,
+        categoryTotals: catTotals,
+        updatedAt: serverTimestamp()
+      });
+    } catch (err) {
+      console.error("Failed to sync totalValue:", err);
+    }
+  };
 
   if (loading || loadingData || !list) return <LoadingScreen />;
 
@@ -224,27 +225,36 @@ export default function ListDetail() {
     if (!newItemName.trim() || !user) return;
 
     try {
+      const price = parseCurrencyToNumber(newItemPrice);
       if (editingItem) {
         await updateDoc(doc(db, "lists", id, "items", editingItem.id), {
           name: newItemName.trim(),
           quantity: newItemQuantity,
           unit: newItemUnit,
           category: newItemCategory,
-          price: parseCurrencyToNumber(newItemPrice),
+          price: price,
           updatedAt: serverTimestamp()
         });
+        
+        // Sync total
+        const updatedItems = items.map(i => i.id === editingItem.id ? { ...i, price, category: newItemCategory } : i);
+        syncListTotals(updatedItems);
       } else {
-        await addDoc(collection(db, "lists", id, "items"), {
+        const newDoc = await addDoc(collection(db, "lists", id, "items"), {
           name: newItemName.trim(),
           quantity: newItemQuantity,
           unit: newItemUnit,
           category: newItemCategory,
-          price: parseCurrencyToNumber(newItemPrice),
+          price: price,
           purchased: false,
           authorId: user.uid,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
+
+        // Sync total
+        const newItem = { id: newDoc.id, name: newItemName, quantity: newItemQuantity, unit: newItemUnit, category: newItemCategory, price, purchased: false };
+        syncListTotals([...items, newItem as ShoppingItem]);
       }
       handleCloseForm();
     } catch (error) {
@@ -285,6 +295,10 @@ export default function ListDetail() {
       }
 
       await updateDoc(doc(db, "lists", id, "items", item.id), updates);
+      
+      // Sync total
+      const updatedItems = items.map(i => i.id === item.id ? { ...i, ...updates } : i);
+      syncListTotals(updatedItems);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `lists/${id}/items/${item.id}`);
     }
@@ -303,6 +317,9 @@ export default function ListDetail() {
       
       await deleteDoc(doc(db, "lists", id, "items", itemToDelete.id));
       
+      // Sync total
+      syncListTotals(items.filter(i => i.id !== itemToDelete.id));
+
       setLastDeletedItem(itemData);
       setShowUndo(true);
       setIsDeleteConfirmOpen(false);
@@ -338,6 +355,10 @@ export default function ListDetail() {
         price: newTotal,
         updatedAt: serverTimestamp()
       });
+
+      // Sync total
+      const updatedItems = items.map(i => i.id === itemId ? { ...i, subItems: updatedSubItems, price: newTotal } : i);
+      syncListTotals(updatedItems);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `lists/${id}/items/${itemId}/subitems`);
     }
@@ -361,6 +382,10 @@ export default function ListDetail() {
         purchased: allPurchased,
         updatedAt: serverTimestamp()
       });
+
+      // Sync total
+      const updatedItems = items.map(i => i.id === itemId ? { ...i, subItems: updatedSubItems, purchased: allPurchased } : i);
+      syncListTotals(updatedItems);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `lists/${id}/items/${itemId}/subitems/${subItemId}`);
     }
@@ -382,6 +407,10 @@ export default function ListDetail() {
         price: newTotal,
         updatedAt: serverTimestamp()
       });
+
+      // Sync total
+      const updatedItems = items.map(i => i.id === itemId ? { ...i, subItems: updatedSubItems, price: newTotal } : i);
+      syncListTotals(updatedItems);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `lists/${id}/items/${itemId}/subitems/${subItemId}`);
     }
@@ -390,11 +419,15 @@ export default function ListDetail() {
   const handleUndoDelete = async () => {
     if (!lastDeletedItem || !user) return;
     try {
-      await addDoc(collection(db, "lists", id, "items"), {
+      const newDoc = await addDoc(collection(db, "lists", id, "items"), {
         ...lastDeletedItem,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
+
+      // Sync total
+      syncListTotals([...items, { id: newDoc.id, ...lastDeletedItem } as ShoppingItem]);
+
       setLastDeletedItem(null);
       setShowUndo(false);
     } catch (error) {
@@ -414,6 +447,13 @@ export default function ListDetail() {
           });
         }
       });
+      const listRef = doc(db, "lists", id);
+      batch.update(listRef, { 
+        totalValue: 0, 
+        categoryTotals: {}, 
+        updatedAt: serverTimestamp() 
+      });
+
       await batch.commit();
       setIsClearPricesConfirmOpen(false);
     } catch (error) {
