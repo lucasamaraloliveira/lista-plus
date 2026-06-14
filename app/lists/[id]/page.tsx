@@ -835,22 +835,24 @@ export default function ListDetail() {
                           />
                           
                           <div className="flex-grow min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <p className={`font-semibold text-slate-800 truncate ${item.purchased ? "line-through text-slate-400" : ""}`}>
-                                {item.name}
-                              </p>
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                            <p className={`font-semibold text-slate-800 truncate ${item.purchased ? "line-through text-slate-400" : ""}`}>
+                              {item.name}
+                            </p>
+                            <div className="text-xs font-medium text-slate-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                              <span>{item.quantity} {item.unit}</span>
+                              <span className="w-1 h-1 rounded-full bg-slate-300 shrink-0" />
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                                 {item.category}
                               </span>
-                            </div>
-                            <p className="text-xs font-medium text-slate-500 mt-0.5">
-                              {item.quantity} {item.unit}
                               {item.subItems && item.subItems.length > 0 && (
-                                <span className="text-[10px] text-amber-600 font-bold block sm:inline-block sm:ml-2 mt-0.5 sm:mt-0">
-                                  ({item.subItems.filter(si => si.purchased).length}/{item.subItems.length} marcas)
-                                </span>
+                                <>
+                                  <span className="w-1 h-1 rounded-full bg-slate-300 shrink-0" />
+                                  <span className="text-[10px] text-amber-600 font-bold whitespace-nowrap">
+                                    ({item.subItems.filter(si => si.purchased).length}/{item.subItems.length} marcas)
+                                  </span>
+                                </>
                               )}
-                            </p>
+                            </div>
                           </div>
 
                           <div className="text-right shrink-0 mr-2">
