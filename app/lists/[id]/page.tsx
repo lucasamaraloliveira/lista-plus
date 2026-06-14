@@ -792,109 +792,119 @@ export default function ListDetail() {
                 {sortedItems.map(item => (
                   <React.Fragment key={item.id}>
                           <div 
-                          className={`group relative flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-2xl border transition-all ${
-                            item.purchased 
-                              ? "border-slate-100 bg-slate-50/50 opacity-60" 
-                              : item.subItems && item.subItems.some(si => si.purchased)
-                                ? "border-amber-200 bg-amber-50/30 shadow-sm"
-                                : "border-slate-200 bg-white shadow-sm hover:border-indigo-200"
-                          }`}
-                        >
-                          {/* Active collaborator indicator */}
-                          {collaborators.filter(c => c.activeItemId === item.id).map(c => (
-                            <div 
-                              key={c.uid}
-                              className="absolute -top-2 left-6 bg-indigo-600 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-1 shadow-sm border border-white z-10 animate-in fade-in zoom-in duration-300"
-                            >
-                              {c.status === 'editing' ? <Loader2 size={8} className="animate-spin" /> : <Eye size={8} />}
-                              {c.displayName?.split(' ')[0]}
+                            className={`group relative flex flex-col gap-2 p-3 sm:p-4 rounded-2xl border transition-all ${
+                              item.purchased 
+                                ? "border-slate-100 bg-slate-50/50 opacity-60" 
+                                : item.subItems && item.subItems.some(si => si.purchased)
+                                  ? "border-amber-200 bg-amber-50/30 shadow-sm"
+                                  : "border-slate-200 bg-white shadow-sm hover:border-indigo-200"
+                            }`}
+                          >
+                            {/* Active collaborator indicator */}
+                            {collaborators.filter(c => c.activeItemId === item.id).map(c => (
+                              <div 
+                                key={c.uid}
+                                className="absolute -top-2 left-6 bg-indigo-600 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-1 shadow-sm border border-white z-10 animate-in fade-in zoom-in duration-300"
+                              >
+                                {c.status === 'editing' ? <Loader2 size={8} className="animate-spin" /> : <Eye size={8} />}
+                                {c.displayName?.split(' ')[0]}
+                              </div>
+                            ))}
+
+                            {/* Row 1: Title, Checkbox, Chevron and Price */}
+                            <div className="flex items-center justify-between gap-2.5 w-full">
+                              <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-grow">
+                                {/* Chevron */}
+                                {item.subItems && item.subItems.length > 0 ? (
+                                  <button 
+                                    onClick={() => toggleExpandItem(item.id)}
+                                    className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-indigo-600 transition-colors shrink-0 focus:outline-none"
+                                    title={expandedItems[item.id] ? "Colapsar marcas" : "Expandir marcas"}
+                                  >
+                                    {expandedItems[item.id] ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                                  </button>
+                                ) : (
+                                  <div className="w-[26px] h-[26px] shrink-0" />
+                                )}
+
+                                {/* Checkbox */}
+                                <input 
+                                  type="checkbox"
+                                  checked={item.purchased}
+                                  onChange={() => handleTogglePurchase(item)}
+                                  className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 shrink-0 cursor-pointer"
+                                />
+
+                                {/* Name */}
+                                <p className={`font-semibold text-slate-800 truncate ${item.purchased ? "line-through text-slate-400" : ""}`}>
+                                  {item.name}
+                                </p>
+                              </div>
+
+                              {/* Price */}
+                              <div className="text-right shrink-0">
+                                <p className="font-bold text-slate-800 text-sm sm:text-base">
+                                  {item.price > 0 
+                                    ? `R$ ${(item.subItems && item.subItems.length > 0 ? item.price : item.price * item.quantity).toFixed(2).replace('.', ',')}` 
+                                    : '-'}
+                                </p>
+                                 {item.subItems && item.subItems.length > 0 && (
+                                    <p className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-tighter leading-none mt-1">Acumulado</p>
+                                 )}
+                              </div>
                             </div>
-                          ))}
 
-                          {item.subItems && item.subItems.length > 0 ? (
-                            <button 
-                              onClick={() => toggleExpandItem(item.id)}
-                              className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-indigo-600 transition-colors shrink-0 focus:outline-none"
-                              title={expandedItems[item.id] ? "Colapsar marcas" : "Expandir marcas"}
-                            >
-                              {expandedItems[item.id] ? (
-                                <ChevronDown size={18} />
-                              ) : (
-                                <ChevronRight size={18} />
-                              )}
-                            </button>
-                          ) : (
-                            <div className="w-[26px] h-[26px] shrink-0" />
-                          )}
+                            {/* Row 2: Metadata and Actions */}
+                            <div className="flex items-center justify-between w-full pl-[52px] sm:pl-[60px]">
+                              {/* Metadata */}
+                              <div className="text-xs font-medium text-slate-500 flex items-center gap-1.5 flex-wrap flex-grow min-w-0 pr-2">
+                                <span>{item.quantity} {item.unit}</span>
+                                <span className="w-1 h-1 rounded-full bg-slate-300 shrink-0" />
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                  {item.category}
+                                </span>
+                                {item.subItems && item.subItems.length > 0 && (
+                                  <>
+                                    <span className="w-1 h-1 rounded-full bg-slate-300 shrink-0" />
+                                    <span className="text-[10px] text-amber-600 font-bold whitespace-nowrap">
+                                      ({item.subItems.filter(si => si.purchased).length}/{item.subItems.length} marcas)
+                                    </span>
+                                  </>
+                                )}
+                              </div>
 
-                          <input 
-                            type="checkbox"
-                            checked={item.purchased}
-                            onChange={() => handleTogglePurchase(item)}
-                            className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 shrink-0 cursor-pointer"
-                          />
-                          
-                          <div className="flex-grow min-w-0">
-                            <p className={`font-semibold text-slate-800 truncate ${item.purchased ? "line-through text-slate-400" : ""}`}>
-                              {item.name}
-                            </p>
-                            <div className="text-xs font-medium text-slate-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
-                              <span>{item.quantity} {item.unit}</span>
-                              <span className="w-1 h-1 rounded-full bg-slate-300 shrink-0" />
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                                {item.category}
-                              </span>
-                              {item.subItems && item.subItems.length > 0 && (
-                                <>
-                                  <span className="w-1 h-1 rounded-full bg-slate-300 shrink-0" />
-                                  <span className="text-[10px] text-amber-600 font-bold whitespace-nowrap">
-                                    ({item.subItems.filter(si => si.purchased).length}/{item.subItems.length} marcas)
-                                  </span>
-                                </>
-                              )}
+                              {/* Actions */}
+                              <div className="flex gap-1 shrink-0">
+                                <button 
+                                  onClick={() => {
+                                    setActiveParentItemId(item.id);
+                                    setNewSubItemName("");
+                                    setNewSubItemQuantity(1);
+                                    setNewSubItemPrice("");
+                                    setIsAddSubItemOpen(true);
+                                  }}
+                                  className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-xl transition-colors focus:outline-none shrink-0"
+                                  title="Adicionar Marca/Variação"
+                                >
+                                  <Plus size={16} />
+                                </button>
+                                <button 
+                                  onClick={() => handleOpenEdit(item)}
+                                  className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-xl transition-colors focus:outline-none shrink-0"
+                                  title="Editar"
+                                >
+                                  <Pencil size={16} />
+                                </button>
+                                <button 
+                                  onClick={() => handleDeleteItem(item)}
+                                  className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-slate-100 rounded-xl transition-colors focus:outline-none shrink-0"
+                                  title="Excluir"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
                             </div>
                           </div>
-
-                          <div className="text-right shrink-0 mr-2">
-                            <p className="font-bold text-slate-800">
-                              {item.price > 0 
-                                ? `R$ ${(item.subItems && item.subItems.length > 0 ? item.price : item.price * item.quantity).toFixed(2).replace('.', ',')}` 
-                                : '-'}
-                            </p>
-                             {item.subItems && item.subItems.length > 0 && (
-                                <p className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-tighter leading-none mt-1">Acumulado</p>
-                             )}
-                          </div>
-                          <div className="flex gap-1">
-                            <button 
-                              onClick={() => {
-                                setActiveParentItemId(item.id);
-                                setNewSubItemName("");
-                                setNewSubItemQuantity(1);
-                                setNewSubItemPrice("");
-                                setIsAddSubItemOpen(true);
-                              }}
-                              className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-xl transition-colors focus:outline-none shrink-0"
-                              title="Adicionar Marca/Variação"
-                            >
-                              <Plus size={16} />
-                            </button>
-                            <button 
-                              onClick={() => handleOpenEdit(item)}
-                              className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-xl transition-colors focus:outline-none shrink-0"
-                              title="Editar"
-                            >
-                              <Pencil size={16} />
-                            </button>
-                            <button 
-                              onClick={() => handleDeleteItem(item)}
-                              className="p-2 text-slate-400 hover:text-red-500 hover:bg-slate-100 rounded-xl transition-colors focus:outline-none shrink-0"
-                              title="Excluir"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </div>
 
                         {/* Sub-items list */}
                         {item.subItems && item.subItems.length > 0 && expandedItems[item.id] && (
