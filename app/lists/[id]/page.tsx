@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { OperationType, handleFirestoreError, db } from "@/lib/firebase";
 import { ShoppingItem, ShoppingList, UnitType, SubItem } from "@/lib/types";
 import { collection, doc, onSnapshot, query, serverTimestamp, updateDoc, deleteDoc, addDoc, arrayUnion, writeBatch, setDoc, Timestamp } from "firebase/firestore";
-import { ArrowLeft, Check, Copy, Package, Plus, Share2, Trash2, ChevronDown, Pencil, RotateCcw, X, Eraser, Loader2, Eye, Search, BarChart2, TrendingUp, TrendingDown, Calendar } from "lucide-react";
+import { ArrowLeft, Check, Copy, Package, Plus, Share2, Trash2, ChevronDown, ChevronRight, Pencil, RotateCcw, X, Eraser, Loader2, Eye, Search, BarChart2, TrendingUp, TrendingDown, Calendar, Calculator } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -33,6 +33,14 @@ export default function ListDetail() {
   const [items, setItems] = useState<ShoppingItem[]>([]);
   const [sortBy, setSortBy] = useState<'date' | 'name'>('date');
   const [searchQuery, setSearchQuery] = useState("");
+  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
+
+  const toggleExpandItem = (itemId: string) => {
+    setExpandedItems(prev => ({
+      ...prev,
+      [itemId]: !prev[itemId]
+    }));
+  };
   
   const sortedItems = useMemo(() => {
     return [...items].sort((a, b) => {
@@ -105,6 +113,13 @@ export default function ListDetail() {
   // Budget states
   const [isBudgetOpen, setIsBudgetOpen] = useState(false);
   const [tempBudget, setTempBudget] = useState("");
+  const [shouldAddToBudget, setShouldAddToBudget] = useState(false);
+
+  // Calculator states
+  const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
+  const [calcDisplay, setCalcDisplay] = useState("");
+  const [calcResult, setCalcResult] = useState("");
+  const [copiedCalcResult, setCopiedCalcResult] = useState(false);
 
   const lastUpdateRef = useRef<number>(0);
   // Presence tracking logic
@@ -196,11 +211,19 @@ export default function ListDetail() {
   const syncListTotals = async (updatedItems: ShoppingItem[]) => {
     if (!id || !user) return;
 
-    const currentTotal = updatedItems.reduce((acc, item) => acc + (item.price || 0), 0);
+    const currentTotal = updatedItems.reduce((acc, item) => {
+      const itemTotal = (item.subItems && item.subItems.length > 0)
+        ? (item.price || 0)
+        : ((item.price || 0) * item.quantity);
+      return acc + itemTotal;
+    }, 0);
     const catTotals: Record<string, number> = {};
     updatedItems.forEach(item => {
-      if (item.price > 0) {
-        catTotals[item.category] = (catTotals[item.category] || 0) + item.price;
+      const itemTotal = (item.subItems && item.subItems.length > 0)
+        ? (item.price || 0)
+        : ((item.price || 0) * item.quantity);
+      if (itemTotal > 0) {
+        catTotals[item.category] = (catTotals[item.category] || 0) + itemTotal;
       }
     });
     
@@ -359,6 +382,12 @@ export default function ListDetail() {
       // Sync total
       const updatedItems = items.map(i => i.id === itemId ? { ...i, subItems: updatedSubItems, price: newTotal } : i);
       syncListTotals(updatedItems);
+
+      // Ensure the item is expanded so the new brand is visible
+      setExpandedItems(prev => ({
+        ...prev,
+        [itemId]: true
+      }));
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `lists/${id}/items/${itemId}/subitems`);
     }
@@ -502,17 +531,81 @@ export default function ListDetail() {
   const handleUpdateBudget = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const typedValue = parseCurrencyToNumber(tempBudget);
+      const newBudget = shouldAddToBudget 
+        ? (list.budget || 0) + typedValue 
+        : typedValue;
+
       await updateDoc(doc(db, "lists", id), {
-        budget: parseCurrencyToNumber(tempBudget),
+        budget: newBudget,
         updatedAt: serverTimestamp()
       });
       setIsBudgetOpen(false);
+      setShouldAddToBudget(false);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `lists/${id}`);
     }
   };
 
-  const totalValue = items.reduce((acc, item) => acc + (item.price || 0), 0);
+  const handleClearBudget = async () => {
+    if (!id || !user) return;
+    try {
+      await updateDoc(doc(db, "lists", id), {
+        budget: 0,
+        updatedAt: serverTimestamp()
+      });
+      setIsBudgetOpen(false);
+      setShouldAddToBudget(false);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `lists/${id}`);
+    }
+  };
+
+  const handleCalcPress = (value: string) => {
+    setCopiedCalcResult(false);
+    if (value === "C") {
+      setCalcDisplay("");
+      setCalcResult("");
+    } else if (value === "backspace") {
+      setCalcDisplay(prev => prev.slice(0, -1));
+      setCalcResult("");
+    } else if (value === "=") {
+      try {
+        const expression = calcDisplay.replace(/,/g, ".");
+        if (/[^0-9+\-*/().]/g.test(expression)) {
+          setCalcResult("Erro");
+          return;
+        }
+        const res = Function(`"use client"; return (${expression})`)();
+        if (res !== undefined && !isNaN(res) && isFinite(res)) {
+          const formatted = Number(res.toFixed(4)).toString().replace(".", ",");
+          setCalcResult(formatted);
+          setCalcDisplay(formatted);
+        } else {
+          setCalcResult("Erro");
+        }
+      } catch (err) {
+        setCalcResult("Erro");
+      }
+    } else {
+      setCalcDisplay(prev => prev + value);
+    }
+  };
+
+  const handleCopyCalcResult = () => {
+    const toCopy = calcResult || calcDisplay;
+    if (!toCopy) return;
+    navigator.clipboard.writeText(toCopy.trim());
+    setCopiedCalcResult(true);
+    setTimeout(() => setCopiedCalcResult(false), 2000);
+  };
+
+  const totalValue = items.reduce((acc, item) => {
+    const itemTotal = (item.subItems && item.subItems.length > 0)
+      ? (item.price || 0)
+      : ((item.price || 0) * item.quantity);
+    return acc + itemTotal;
+  }, 0);
   
   const purchasedValue = items.reduce((acc, item) => {
     if (item.subItems && item.subItems.length > 0) {
@@ -521,7 +614,7 @@ export default function ListDetail() {
         .reduce((sum, si) => sum + (si.price * si.quantity), 0);
       return acc + siTotal;
     }
-    return acc + (item.purchased ? (item.price || 0) : 0);
+    return acc + (item.purchased ? ((item.price || 0) * item.quantity) : 0);
   }, 0);
 
   const unpurchasedValue = totalValue - purchasedValue;
@@ -576,7 +669,8 @@ export default function ListDetail() {
 
           <button 
             onClick={() => {
-              setTempBudget(list.budget ? formatCurrency(list.budget) : "");
+              setTempBudget("");
+              setShouldAddToBudget(false);
               setIsBudgetOpen(true);
             }}
             className={`flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs font-bold px-2 sm:px-3 py-1 sm:py-1.5 rounded-full border transition-all ${
@@ -694,16 +788,9 @@ export default function ListDetail() {
                 <p className="font-medium">Nenhum produto adicionado</p>
               </div>
             ) : (
-              activeCategories.map(category => {
-                const catItems = sortedItems.filter(i => i.category === category);
-                if (catItems.length === 0) return null;
-
-                return (
-                  <div key={category} className="space-y-3">
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest pl-2 mb-2">{category}</h3>
-                    <div className="space-y-2">
-                      {catItems.map(item => (
-                        <React.Fragment key={item.id}>
+              <div className="space-y-2">
+                {sortedItems.map(item => (
+                  <React.Fragment key={item.id}>
                           <div 
                           className={`group relative flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-2xl border transition-all ${
                             item.purchased 
@@ -724,6 +811,22 @@ export default function ListDetail() {
                             </div>
                           ))}
 
+                          {item.subItems && item.subItems.length > 0 ? (
+                            <button 
+                              onClick={() => toggleExpandItem(item.id)}
+                              className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-indigo-600 transition-colors shrink-0 focus:outline-none"
+                              title={expandedItems[item.id] ? "Colapsar marcas" : "Expandir marcas"}
+                            >
+                              {expandedItems[item.id] ? (
+                                <ChevronDown size={18} />
+                              ) : (
+                                <ChevronRight size={18} />
+                              )}
+                            </button>
+                          ) : (
+                            <div className="w-[26px] h-[26px] shrink-0" />
+                          )}
+
                           <input 
                             type="checkbox"
                             checked={item.purchased}
@@ -732,10 +835,15 @@ export default function ListDetail() {
                           />
                           
                           <div className="flex-grow min-w-0">
-                            <p className={`font-semibold text-slate-800 truncate ${item.purchased ? "line-through text-slate-400" : ""}`}>
-                              {item.name}
-                            </p>
-                            <p className="text-xs font-medium text-slate-500">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className={`font-semibold text-slate-800 truncate ${item.purchased ? "line-through text-slate-400" : ""}`}>
+                                {item.name}
+                              </p>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                                {item.category}
+                              </span>
+                            </div>
+                            <p className="text-xs font-medium text-slate-500 mt-0.5">
                               {item.quantity} {item.unit}
                               {item.subItems && item.subItems.length > 0 && (
                                 <span className="text-[10px] text-amber-600 font-bold block sm:inline-block sm:ml-2 mt-0.5 sm:mt-0">
@@ -747,10 +855,12 @@ export default function ListDetail() {
 
                           <div className="text-right shrink-0 mr-2">
                             <p className="font-bold text-slate-800">
-                              {item.price > 0 ? `R$ ${item.price.toFixed(2).replace('.', ',')}` : '-'}
+                              {item.price > 0 
+                                ? `R$ ${(item.subItems && item.subItems.length > 0 ? item.price : item.price * item.quantity).toFixed(2).replace('.', ',')}` 
+                                : '-'}
                             </p>
                              {item.subItems && item.subItems.length > 0 && (
-                               <p className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-tighter leading-none mt-1">Acumulado</p>
+                                <p className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-tighter leading-none mt-1">Acumulado</p>
                              )}
                           </div>
                           <div className="flex gap-1">
@@ -785,7 +895,7 @@ export default function ListDetail() {
                         </div>
 
                         {/* Sub-items list */}
-                        {item.subItems && item.subItems.length > 0 && (
+                        {item.subItems && item.subItems.length > 0 && expandedItems[item.id] && (
                           <div className="ml-12 mr-4 mb-2 space-y-1 animate-in slide-in-from-top-2 duration-300">
                             {item.subItems.map(si => (
                               <div key={si.id} className={`flex items-center justify-between gap-3 p-2.5 rounded-xl border ${
@@ -819,10 +929,7 @@ export default function ListDetail() {
                         )}
                       </React.Fragment>
                       ))}
-                    </div>
-                  </div>
-                );
-              })
+              </div>
             )}
           </div>
         </div>
@@ -848,12 +955,19 @@ export default function ListDetail() {
           <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm shrink-0">
             <h3 className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Comprado (Total: R$ {purchasedValue.toFixed(2).replace('.', ',')})</h3>
             <div className="space-y-3 mt-4">
-              {items.filter(i => i.purchased).map(item => (
-                <div key={item.id} className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                  <span className="text-sm font-semibold text-slate-600 truncate mr-2">{item.name}</span>
-                  <span className="text-[10px] font-bold text-slate-400 bg-slate-200 px-2 py-1 rounded-md shrink-0">R$ {item.price.toFixed(2)}</span>
-                </div>
-              ))}
+              {items.filter(i => i.purchased).map(item => {
+                const itemTotal = (item.subItems && item.subItems.length > 0)
+                  ? item.price
+                  : item.price * item.quantity;
+                return (
+                  <div key={item.id} className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                    <span className="text-sm font-semibold text-slate-600 truncate mr-2">{item.name}</span>
+                    <span className="text-[10px] font-bold text-slate-400 bg-slate-200 px-2 py-1 rounded-md shrink-0">
+                      R$ {itemTotal.toFixed(2).replace('.', ',')}
+                    </span>
+                  </div>
+                );
+              })}
               {items.filter(i => i.purchased).length === 0 && (
                 <p className="text-sm text-slate-400 italic text-center py-2">Nenhum item comprado.</p>
               )}
@@ -868,8 +982,11 @@ export default function ListDetail() {
               {(() => {
                 const catTotals: Record<string, number> = {};
                 items.forEach(item => {
-                  if (item.price > 0) {
-                    catTotals[item.category] = (catTotals[item.category] || 0) + item.price;
+                  const itemTotal = (item.subItems && item.subItems.length > 0)
+                    ? (item.price || 0)
+                    : ((item.price || 0) * item.quantity);
+                  if (itemTotal > 0) {
+                    catTotals[item.category] = (catTotals[item.category] || 0) + itemTotal;
                   }
                 });
 
@@ -1028,8 +1145,23 @@ export default function ListDetail() {
               </div>
               <Dialog.Title className="text-xl font-bold text-slate-800 mb-2">Saldo Disponível</Dialog.Title>
               <Dialog.Description className="text-slate-500 font-medium">
-                Quanto você pretende gastar nesta compra?
+                Defina o limite de gastos ou adicione valor ao saldo atual.
               </Dialog.Description>
+              {list.budget !== undefined && list.budget > 0 && (
+                <div className="flex items-center gap-2 mt-2">
+                  <p className="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 rounded-full px-3 py-1">
+                    Saldo Atual: R$ {list.budget.toFixed(2).replace('.', ',')}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleClearBudget}
+                    className="text-[10px] font-bold text-red-500 hover:text-white hover:bg-red-500 border border-red-100 hover:border-red-500 rounded-full px-2.5 py-1 transition-all"
+                    title="Limpar Saldo"
+                  >
+                    Limpar
+                  </button>
+                </div>
+              )}
             </div>
             <form onSubmit={handleUpdateBudget} className="space-y-4">
               <div>
@@ -1039,10 +1171,37 @@ export default function ListDetail() {
                   autoFocus
                   value={tempBudget}
                   onChange={e => setTempBudget(formatCurrency(e.target.value))}
+                  inputMode="numeric"
+                  onKeyDown={(e) => {
+                    if (
+                      !/[0-9]/.test(e.key) && 
+                      e.key !== "Backspace" && 
+                      e.key !== "Delete" && 
+                      e.key !== "Tab" && 
+                      e.key !== "ArrowLeft" && 
+                      e.key !== "ArrowRight"
+                    ) {
+                      e.preventDefault();
+                    }
+                  }}
                   className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-lg font-bold text-slate-700"
                   placeholder="0,00"
                 />
               </div>
+              {list.budget !== undefined && list.budget > 0 && (
+                <div className="flex items-center gap-2 mb-2 bg-slate-50 border border-slate-100 p-3 rounded-2xl">
+                  <input 
+                    type="checkbox"
+                    id="addToBudget"
+                    checked={shouldAddToBudget}
+                    onChange={(e) => setShouldAddToBudget(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                  />
+                  <label htmlFor="addToBudget" className="text-xs font-bold text-slate-500 cursor-pointer select-none">
+                    Somar ao saldo atual
+                  </label>
+                </div>
+              )}
               <div className="flex gap-3 pt-2">
                 <Dialog.Close asChild>
                   <button type="button" className="flex-1 px-5 py-3 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-2xl transition-colors">
@@ -1212,11 +1371,24 @@ export default function ListDetail() {
                   </Select.Root>
                 </div>
                 <div className="flex-1">
-                  <label className="text-sm font-bold text-slate-600">Valor Total (R$) <span className="font-medium text-slate-400 opacity-80">(Op)</span></label>
+                  <label className="text-sm font-bold text-slate-600">Preço Unitário (R$) <span className="font-medium text-slate-400 opacity-80">(Op)</span></label>
                   <input 
                     type="text"
                     value={newItemPrice}
                     onChange={e => setNewItemPrice(formatCurrency(e.target.value))}
+                    inputMode="numeric"
+                    onKeyDown={(e) => {
+                      if (
+                        !/[0-9]/.test(e.key) && 
+                        e.key !== "Backspace" && 
+                        e.key !== "Delete" && 
+                        e.key !== "Tab" && 
+                        e.key !== "ArrowLeft" && 
+                        e.key !== "ArrowRight"
+                      ) {
+                        e.preventDefault();
+                      }
+                    }}
                     className="mt-1 w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all" 
                     placeholder="0,00"
                   />
@@ -1408,6 +1580,19 @@ export default function ListDetail() {
                       type="text" 
                       value={newSubItemPrice}
                       onChange={e => setNewSubItemPrice(formatCurrency(e.target.value))}
+                      inputMode="numeric"
+                      onKeyDown={(e) => {
+                        if (
+                          !/[0-9]/.test(e.key) && 
+                          e.key !== "Backspace" && 
+                          e.key !== "Delete" && 
+                          e.key !== "Tab" && 
+                          e.key !== "ArrowLeft" && 
+                          e.key !== "ArrowRight"
+                        ) {
+                          e.preventDefault();
+                        }
+                      }}
                       placeholder="0,00"
                       className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-medium"
                     />
@@ -1473,6 +1658,100 @@ export default function ListDetail() {
                 </button>
               </div>
             </form>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      {/* Floating Calculator Button */}
+      <div className="fixed bottom-52 right-6 sm:bottom-8 sm:right-8 z-40">
+        <motion.button 
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => setIsCalculatorOpen(true)}
+          className="bg-white hover:bg-slate-50 text-indigo-600 w-16 h-16 rounded-full flex items-center justify-center shadow-lg border border-slate-200 active:shadow-inner"
+          title="Calculadora"
+        >
+          <Calculator size={28} />
+        </motion.button>
+      </div>
+
+      {/* Calculator Dialog */}
+      <Dialog.Root open={isCalculatorOpen} onOpenChange={setIsCalculatorOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <Dialog.Content className="fixed left-[50%] top-[50%] z-50 grid w-full max-sm:w-[calc(100%-2rem)] max-w-xs translate-x-[-50%] translate-y-[-50%] gap-4 border border-slate-800 bg-slate-900 p-6 shadow-2xl duration-200 rounded-[2rem] outline-none">
+            <div className="flex justify-between items-center text-white">
+              <Dialog.Title className="text-sm font-bold tracking-wider text-slate-400">CALCULADORA</Dialog.Title>
+              <Dialog.Close asChild>
+                <button className="text-slate-400 hover:text-white transition-colors">
+                  <X size={20} />
+                </button>
+              </Dialog.Close>
+            </div>
+
+            {/* Display screen */}
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 text-right flex flex-col justify-end min-h-[96px] select-all">
+              <div className="text-slate-500 text-xs font-mono tracking-wide truncate h-5">
+                {calcDisplay || " "}
+              </div>
+              <div className="text-white text-3xl font-black font-mono tracking-tight mt-1 truncate">
+                {calcResult || calcDisplay || "0"}
+              </div>
+            </div>
+
+            {/* Actions (Copy Result) */}
+            <div className="flex gap-2 justify-end mb-1">
+              <button
+                type="button"
+                onClick={handleCopyCalcResult}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  copiedCalcResult 
+                    ? "bg-emerald-500/20 text-emerald-400" 
+                    : "bg-slate-800 hover:bg-slate-700 text-slate-300"
+                }`}
+                disabled={!calcDisplay && !calcResult}
+              >
+                <Copy size={12} />
+                <span>{copiedCalcResult ? "Copiado!" : "Copiar"}</span>
+              </button>
+            </div>
+
+            {/* Button grid */}
+            <div className="grid grid-cols-4 gap-2.5">
+              {/* Row 1 */}
+              <button type="button" onClick={() => handleCalcPress("C")} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 text-base font-bold py-3.5 rounded-2xl transition-colors">C</button>
+              <button type="button" onClick={() => handleCalcPress("(")} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-base font-bold py-3.5 rounded-2xl transition-colors">(</button>
+              <button type="button" onClick={() => handleCalcPress(")")} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-base font-bold py-3.5 rounded-2xl transition-colors">)</button>
+              <button type="button" onClick={() => handleCalcPress("/")} className="bg-indigo-600 hover:bg-indigo-500 text-white text-lg font-black py-3.5 rounded-2xl transition-colors">/</button>
+
+              {/* Row 2 */}
+              <button type="button" onClick={() => handleCalcPress("7")} className="bg-slate-800 hover:bg-slate-700 text-white text-lg font-bold py-3.5 rounded-2xl transition-colors">7</button>
+              <button type="button" onClick={() => handleCalcPress("8")} className="bg-slate-800 hover:bg-slate-700 text-white text-lg font-bold py-3.5 rounded-2xl transition-colors">8</button>
+              <button type="button" onClick={() => handleCalcPress("9")} className="bg-slate-800 hover:bg-slate-700 text-white text-lg font-bold py-3.5 rounded-2xl transition-colors">9</button>
+              <button type="button" onClick={() => handleCalcPress("*")} className="bg-indigo-600 hover:bg-indigo-500 text-white text-lg font-black py-3.5 rounded-2xl transition-colors">*</button>
+
+              {/* Row 3 */}
+              <button type="button" onClick={() => handleCalcPress("4")} className="bg-slate-800 hover:bg-slate-700 text-white text-lg font-bold py-3.5 rounded-2xl transition-colors">4</button>
+              <button type="button" onClick={() => handleCalcPress("5")} className="bg-slate-800 hover:bg-slate-700 text-white text-lg font-bold py-3.5 rounded-2xl transition-colors">5</button>
+              <button type="button" onClick={() => handleCalcPress("6")} className="bg-slate-800 hover:bg-slate-700 text-white text-lg font-bold py-3.5 rounded-2xl transition-colors">6</button>
+              <button type="button" onClick={() => handleCalcPress("-")} className="bg-indigo-600 hover:bg-indigo-500 text-white text-lg font-black py-3.5 rounded-2xl transition-colors">-</button>
+
+              {/* Row 4 */}
+              <button type="button" onClick={() => handleCalcPress("1")} className="bg-slate-800 hover:bg-slate-700 text-white text-lg font-bold py-3.5 rounded-2xl transition-colors">1</button>
+              <button type="button" onClick={() => handleCalcPress("2")} className="bg-slate-800 hover:bg-slate-700 text-white text-lg font-bold py-3.5 rounded-2xl transition-colors">2</button>
+              <button type="button" onClick={() => handleCalcPress("3")} className="bg-slate-800 hover:bg-slate-700 text-white text-lg font-bold py-3.5 rounded-2xl transition-colors">3</button>
+              <button type="button" onClick={() => handleCalcPress("+")} className="bg-indigo-600 hover:bg-indigo-500 text-white text-lg font-black py-3.5 rounded-2xl transition-colors">+</button>
+
+              {/* Row 5 */}
+              <button type="button" onClick={() => handleCalcPress("0")} className="bg-slate-800 hover:bg-slate-700 text-white text-lg font-bold py-3.5 rounded-2xl transition-colors col-span-2">0</button>
+              <button type="button" onClick={() => handleCalcPress(",")} className="bg-slate-800 hover:bg-slate-700 text-white text-lg font-bold py-3.5 rounded-2xl transition-colors">,</button>
+              <button type="button" onClick={() => handleCalcPress("backspace")} className="bg-slate-800 hover:bg-slate-700 text-slate-400 text-base font-bold py-3.5 rounded-2xl flex items-center justify-center transition-colors">⌫</button>
+
+              {/* Equals Button */}
+              <button type="button" onClick={() => handleCalcPress("=")} className="bg-emerald-600 hover:bg-emerald-500 text-white text-xl font-black py-4 rounded-2xl col-span-4 transition-colors mt-1 shadow-lg shadow-emerald-950/50">
+                =
+              </button>
+            </div>
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
