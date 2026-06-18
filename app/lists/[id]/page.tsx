@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState, useRef, Fragment } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { OperationType, handleFirestoreError, db } from "@/lib/firebase";
 import { ShoppingItem, ShoppingList, UnitType, SubItem } from "@/lib/types";
-import { collection, doc, onSnapshot, query, serverTimestamp, updateDoc, deleteDoc, addDoc, arrayUnion, writeBatch, setDoc, Timestamp } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, serverTimestamp, updateDoc, deleteDoc, addDoc, arrayUnion, writeBatch, setDoc, Timestamp, getDocs, orderBy } from "firebase/firestore";
 import { ArrowLeft, Check, Copy, Package, Plus, Share2, Trash2, ChevronDown, ChevronRight, Pencil, RotateCcw, X, Eraser, Loader2, Eye, Search, BarChart2, TrendingUp, TrendingDown, Calendar, Calculator } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -55,8 +55,19 @@ export default function ListDetail() {
     );
   }, [items, sortBy, searchQuery]);
 
+
+
   const [loadingData, setLoadingData] = useState(true);
   const [collaborators, setCollaborators] = useState<Presence[]>([]);
+
+  // Month transition and History states
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [showMonthTransitionBanner, setShowMonthTransitionBanner] = useState(false);
+  const [newCalendarMonth, setNewCalendarMonth] = useState("");
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [historyData, setHistoryData] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [selectedProductForComparison, setSelectedProductForComparison] = useState<string>("");
 
   // Form states
   const [isAddItemOpen, setIsAddItemOpen] = useState(false);
@@ -120,6 +131,17 @@ export default function ListDetail() {
   const [calcDisplay, setCalcDisplay] = useState("");
   const [calcResult, setCalcResult] = useState("");
   const [copiedCalcResult, setCopiedCalcResult] = useState(false);
+
+  const allUniqueProductNames = useMemo(() => {
+    const names = new Set<string>();
+    items.forEach(item => names.add(item.name));
+    historyData.forEach(h => {
+      if (h.itemsSnapshot) {
+        h.itemsSnapshot.forEach((item: any) => names.add(item.name));
+      }
+    });
+    return Array.from(names).sort();
+  }, [items, historyData]);
 
   const lastUpdateRef = useRef<number>(0);
   // Presence tracking logic
@@ -185,7 +207,17 @@ export default function ListDetail() {
 
     const unsubList = onSnapshot(doc(db, "lists", id), (doc) => {
       if (doc.exists()) {
-        setList({ id: doc.id, ...doc.data() } as ShoppingList);
+        const data = doc.data();
+        setList({ id: doc.id, ...data } as ShoppingList);
+
+        // Check if calendar month is newer than list month
+        const currentMonthStr = new Date().toISOString().slice(0, 7); // YYYY-MM
+        if (data && data.month && currentMonthStr > data.month) {
+          setNewCalendarMonth(currentMonthStr);
+          setShowMonthTransitionBanner(true);
+        } else {
+          setShowMonthTransitionBanner(false);
+        }
       } else {
         router.push("/");
       }
@@ -206,6 +238,88 @@ export default function ListDetail() {
       unsubItems();
     };
   }, [user, id, router]);
+
+  const fetchHistory = async () => {
+    if (!id) return;
+    setLoadingHistory(true);
+    try {
+      const q = query(collection(db, "lists", id, "history"), orderBy("month", "desc"));
+      const snapshot = await getDocs(q);
+      const hist: any[] = [];
+      snapshot.forEach(doc => {
+        hist.push({ id: doc.id, ...doc.data() });
+      });
+      setHistoryData(hist);
+    } catch (err) {
+      console.error("Error fetching history:", err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const handleArchiveAndReset = async () => {
+    if (!id || !list || !list.month || isTransitioning) return;
+    setIsTransitioning(true);
+    try {
+      const batch = writeBatch(db);
+      
+      // 1. Reset all items
+      items.forEach((item) => {
+        const itemRef = doc(db, "lists", id, "items", item.id);
+        const updates: any = {
+          purchased: false,
+          price: 0,
+          updatedAt: serverTimestamp()
+        };
+        if (item.subItems && item.subItems.length > 0) {
+          updates.subItems = item.subItems.map(si => ({
+            ...si,
+            purchased: false,
+            price: 0
+          }));
+        }
+        batch.update(itemRef, updates);
+      });
+
+      // 2. Save history snapshot
+      const historyRef = doc(db, "lists", id, "history", list.month);
+      batch.set(historyRef, {
+        month: list.month,
+        totalValue,
+        purchasedValue,
+        categoryTotals: list.categoryTotals || {},
+        budget: list.budget || 0,
+        itemsSnapshot: items.map(item => ({
+          id: item.id,
+          name: item.name,
+          quantity: item.quantity,
+          unit: item.unit,
+          category: item.category,
+          price: item.price,
+          purchased: item.purchased,
+          subItems: item.subItems || []
+        })),
+        archivedAt: serverTimestamp()
+      });
+
+      // 3. Update main list document
+      const listRef = doc(db, "lists", id);
+      batch.update(listRef, {
+        month: newCalendarMonth,
+        totalValue: 0,
+        categoryTotals: {},
+        updatedAt: serverTimestamp()
+      });
+
+      await batch.commit();
+      setShowMonthTransitionBanner(false);
+    } catch (error) {
+      console.error("Transition error:", error);
+      handleFirestoreError(error, OperationType.UPDATE, `lists/${id}`);
+    } finally {
+      setIsTransitioning(false);
+    }
+  };
 
   // Helper to sync list totals only when necessary
   const syncListTotals = async (updatedItems: ShoppingItem[]) => {
@@ -691,6 +805,18 @@ export default function ListDetail() {
             </span>
           </button>
 
+          <button 
+            onClick={() => {
+              fetchHistory();
+              setIsHistoryOpen(true);
+            }}
+            className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs font-bold px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-full border border-indigo-150 text-indigo-700 bg-indigo-50/50 hover:bg-indigo-50 hover:border-indigo-300 shadow-sm transition-all"
+            title="Histórico da Lista"
+          >
+            <Calendar size={14} className="text-indigo-600" />
+            <span className="whitespace-nowrap">Histórico</span>
+          </button>
+
           <span className="hidden sm:flex items-center gap-2 text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
             <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
             <span>Sincronizado</span>
@@ -756,6 +882,59 @@ export default function ListDetail() {
               </button>
             </div>
           </div>
+
+          {/* Month Transition Banner */}
+          <AnimatePresence>
+            {showMonthTransitionBanner && list && (
+              <motion.div 
+                initial={{ opacity: 0, height: 0, y: -20 }}
+                animate={{ opacity: 1, height: "auto", y: 0 }}
+                exit={{ opacity: 0, height: 0, y: -20 }}
+                className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-3xl p-4 sm:p-5 mb-6 shadow-sm overflow-hidden"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <div className="bg-amber-100 p-2.5 rounded-2xl text-amber-800 shrink-0">
+                      <Calendar size={20} className="animate-pulse" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-800">
+                        O mês de referência mudou!
+                      </h4>
+                      <p className="text-xs text-slate-500 font-medium mt-1 leading-relaxed">
+                        Deseja arquivar os gastos de <strong className="text-indigo-600 uppercase">{new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(new Date(list.month + "-02"))}</strong> no histórico e iniciar um novo mês zerado?
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2.5 self-end sm:self-center shrink-0">
+                    <button 
+                      onClick={() => setShowMonthTransitionBanner(false)}
+                      className="px-3.5 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100/80 rounded-xl transition-all"
+                    >
+                      Dispensar
+                    </button>
+                    <button 
+                      onClick={handleArchiveAndReset}
+                      disabled={isTransitioning}
+                      className="bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-amber-100 transition-all flex items-center gap-1.5"
+                    >
+                      {isTransitioning ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" />
+                          Processando...
+                        </>
+                      ) : (
+                        <>
+                          <Check size={14} />
+                          Arquivar e Resetar
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Search Bar */}
           {items.length > 0 && (
@@ -1702,11 +1881,11 @@ export default function ListDetail() {
             </div>
 
             {/* Display screen */}
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 text-right flex flex-col justify-end min-h-[96px] select-all">
-              <div className="text-slate-500 text-xs font-mono tracking-wide truncate h-5">
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 text-right flex flex-col justify-end min-h-[96px] select-all w-full overflow-hidden">
+              <div className="text-slate-500 text-xs font-mono tracking-wide truncate h-5 w-full">
                 {calcDisplay || " "}
               </div>
-              <div className="text-white text-3xl font-black font-mono tracking-tight mt-1 truncate">
+              <div className="text-white text-3xl font-black font-mono tracking-tight mt-1 truncate w-full">
                 {calcResult || calcDisplay || "0"}
               </div>
             </div>
@@ -1764,6 +1943,268 @@ export default function ListDetail() {
                 =
               </button>
             </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      {/* History Dialog */}
+      <Dialog.Root open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <Dialog.Content className="fixed left-[50%] top-[50%] z-50 w-full max-w-2xl translate-x-[-50%] translate-y-[-50%] border border-slate-100 bg-white shadow-2xl duration-200 rounded-[2.5rem] outline-none max-h-[90vh] flex flex-col overflow-hidden p-6">
+            <div className="flex justify-between items-start mb-4">
+              <div className="flex items-center gap-3">
+                <div className="bg-indigo-100 p-2.5 rounded-2xl text-indigo-600">
+                  <RotateCcw size={24} />
+                </div>
+                <div>
+                  <Dialog.Title className="text-xl font-bold text-slate-800">Histórico da Lista</Dialog.Title>
+                  <Dialog.Description className="text-slate-500 font-medium text-sm">
+                    Acompanhamento de gastos e compras anteriores.
+                  </Dialog.Description>
+                </div>
+              </div>
+              <Dialog.Close className="p-2 hover:bg-slate-50 rounded-xl transition-colors">
+                <X className="text-slate-400" size={24} />
+              </Dialog.Close>
+            </div>
+
+            {loadingHistory ? (
+              <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-2">
+                <Loader2 size={36} className="animate-spin text-indigo-600" />
+                <span className="text-sm font-semibold">Carregando histórico...</span>
+              </div>
+            ) : historyData.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-slate-400 border border-dashed border-slate-200 rounded-3xl p-6">
+                <Calendar size={36} className="text-slate-300 mb-2" />
+                <span className="text-sm font-semibold text-slate-500">Nenhum mês anterior arquivado.</span>
+                <span className="text-xs text-slate-400 mt-1">Quando o mês virar, você poderá salvar o histórico aqui.</span>
+              </div>
+            ) : (
+              <div className="flex-1 overflow-y-auto pr-2 space-y-6 pb-6">
+                {/* Product Price Comparison Section */}
+                <div className="bg-slate-50 border border-slate-100 rounded-3xl p-5 space-y-4">
+                  <div>
+                    <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider block mb-1">Comparador de Preços por Item</h4>
+                    <span className="text-xs text-slate-500 font-medium">Veja a evolução dos preços pagos por um mesmo produto ao longo do tempo.</span>
+                  </div>
+                  
+                  <div className="w-full">
+                    <select
+                      value={selectedProductForComparison}
+                      onChange={(e) => setSelectedProductForComparison(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-2xl py-3 px-4 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all shadow-sm"
+                    >
+                      <option value="">Selecione um produto...</option>
+                      {allUniqueProductNames.map(name => (
+                        <option key={name} value={name}>{name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {selectedProductForComparison && (() => {
+                    const priceHistory: Array<{
+                      month: string;
+                      price: number;
+                      subItemsText?: string;
+                      isCurrent: boolean;
+                    }> = [];
+
+                    // 1. Check current items
+                    const currentItem = items.find(i => i.name === selectedProductForComparison);
+                    if (currentItem && currentItem.price > 0) {
+                      priceHistory.push({
+                        month: list.month || "",
+                        price: currentItem.price,
+                        subItemsText: currentItem.subItems && currentItem.subItems.length > 0
+                          ? currentItem.subItems.map(si => `${si.name} (x${si.quantity})`).join(", ")
+                          : undefined,
+                        isCurrent: true
+                      });
+                    }
+
+                    // 2. Check historical snapshots
+                    historyData.forEach(h => {
+                      const histItem = h.itemsSnapshot?.find((i: any) => i.name === selectedProductForComparison);
+                      if (histItem && histItem.price > 0) {
+                        priceHistory.push({
+                          month: h.month,
+                          price: histItem.price,
+                          subItemsText: histItem.subItems && histItem.subItems.length > 0
+                            ? histItem.subItems.map((si: any) => `${si.name} (x${si.quantity})`).join(", ")
+                            : undefined,
+                          isCurrent: false
+                        });
+                      }
+                    });
+
+                    // Sort chronological (oldest to newest)
+                    priceHistory.sort((a, b) => a.month.localeCompare(b.month));
+
+                    if (priceHistory.length === 0) {
+                      return <p className="text-xs text-slate-400 font-medium italic pl-1">Nenhum preço registrado para este item.</p>;
+                    }
+
+                    return (
+                      <div className="space-y-2.5 mt-2">
+                        {priceHistory.map((entry, idx) => {
+                          const prevEntry = priceHistory[idx - 1];
+                          const diff = prevEntry ? entry.price - prevEntry.price : 0;
+                          const percent = prevEntry ? (diff / prevEntry.price) * 100 : 0;
+
+                          return (
+                            <div key={entry.month} className="flex justify-between items-center bg-white border border-slate-100 p-3 rounded-2xl shadow-sm">
+                              <div>
+                                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+                                  {new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(new Date(entry.month + "-02"))}
+                                  {entry.isCurrent && <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full ml-2 uppercase">Mês Ativo</span>}
+                                </span>
+                                {entry.subItemsText && (
+                                  <span className="text-[10px] text-slate-400 font-medium block mt-0.5">Marcas: {entry.subItemsText}</span>
+                                )}
+                              </div>
+                              <div className="text-right flex items-center gap-3">
+                                <span className="text-sm font-black text-slate-800">
+                                  R$ {entry.price.toFixed(2).replace('.', ',')}
+                                </span>
+                                {prevEntry && (
+                                  <span className={`text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-0.5 border ${
+                                    diff > 0 
+                                      ? "bg-red-50 border-red-100 text-red-600" 
+                                      : diff < 0 
+                                        ? "bg-emerald-50 border-emerald-100 text-emerald-600" 
+                                        : "bg-slate-50 border-slate-100 text-slate-500"
+                                  }`}>
+                                    {diff > 0 ? "+" : diff < 0 ? "" : ""}
+                                    {percent.toFixed(0)}%
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* History Cards */}
+                <div className="space-y-4">
+                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest block mb-2 px-1">Registros de Período</h4>
+                  
+                  {historyData.map((h, idx) => {
+                    const total = h.totalValue || 0;
+                    const prevHistory = historyData[idx + 1];
+                    const prevTotal = prevHistory ? prevHistory.totalValue : null;
+                    const diff = prevTotal !== null ? total - prevTotal : 0;
+                    const percent = prevTotal ? (diff / prevTotal) * 100 : 0;
+
+                    return (
+                      <div key={h.id} className="bg-slate-50 border border-slate-100 rounded-[2rem] p-5 space-y-4 shadow-sm">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-white rounded-xl border border-slate-100 flex flex-col items-center justify-center shadow-sm">
+                              <span className="text-[9px] font-black text-slate-400 uppercase leading-none">
+                                {new Intl.DateTimeFormat('pt-BR', { month: 'short' }).format(new Date(h.month + "-02")).replace('.', '')}
+                              </span>
+                              <span className="text-[10px] font-bold text-indigo-600 leading-none mt-0.5">
+                                {h.month.split('-')[0]}
+                              </span>
+                            </div>
+                            <div>
+                              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider leading-none">Gasto Total</h4>
+                              <p className="text-lg font-black text-slate-800 tracking-tight mt-1">
+                                R$ {total.toFixed(2).replace('.', ',')}
+                              </p>
+                            </div>
+                          </div>
+
+                          {prevTotal !== null && (
+                            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border self-start sm:self-center ${
+                              diff > 0 
+                                ? "bg-red-50 border-red-100 text-red-600" 
+                                : "bg-emerald-50 border-emerald-100 text-emerald-600"
+                            }`}>
+                              {diff > 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                              <div className="flex flex-col">
+                                <span className="text-[9px] font-black uppercase tracking-wider leading-none">
+                                  {diff > 0 ? "Aumento" : "Economia"}
+                                </span>
+                                <span className="text-xs font-bold leading-none mt-1">
+                                  {percent.toFixed(1).replace('.', ',')}% (R$ {Math.abs(diff).toFixed(2).replace('.', ',')})
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Category List */}
+                        {h.categoryTotals && Object.keys(h.categoryTotals).length > 0 && (
+                          <div className="bg-white p-4 rounded-2xl border border-slate-100 space-y-2 shadow-sm">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">Gastos por Categoria</span>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 mt-1">
+                              {Object.entries(h.categoryTotals as Record<string, number>)
+                                .sort((a, b) => b[1] - a[1])
+                                .map(([cat, val]) => (
+                                  <div key={cat} className="flex justify-between items-center text-xs">
+                                    <span className="font-semibold text-slate-500 truncate mr-2">{cat}</span>
+                                    <span className="font-bold text-slate-700 shrink-0">R$ {val.toFixed(2).replace('.', ',')}</span>
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Historical Items List (Expandable) */}
+                        <Dialog.Root>
+                          <Dialog.Trigger asChild>
+                            <button className="w-full flex items-center justify-center gap-2 py-2 border border-slate-200 hover:bg-slate-100 text-slate-600 rounded-xl text-xs font-bold transition-all mt-2 bg-white shadow-sm">
+                              <Eye size={14} />
+                              Ver Itens Comprados ({h.itemsSnapshot?.length || 0})
+                            </button>
+                          </Dialog.Trigger>
+                          <Dialog.Portal>
+                            <Dialog.Overlay className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+                            <Dialog.Content className="fixed left-[50%] top-[50%] z-[70] w-full max-w-md translate-x-[-50%] translate-y-[-50%] border border-slate-100 bg-white shadow-2xl duration-200 rounded-3xl p-6 outline-none max-h-[80vh] flex flex-col overflow-hidden">
+                              <div className="flex justify-between items-start mb-4">
+                                <div>
+                                  <Dialog.Title className="text-base font-bold text-slate-800">
+                                    Itens de {new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(new Date(h.month + "-02"))}
+                                  </Dialog.Title>
+                                  <Dialog.Description className="text-xs text-slate-500">
+                                    Lista de itens comprados no período.
+                                  </Dialog.Description>
+                                </div>
+                                <Dialog.Close className="p-1 hover:bg-slate-100 rounded-lg transition-colors">
+                                  <X className="text-slate-400" size={18} />
+                                </Dialog.Close>
+                              </div>
+                              <div className="flex-1 overflow-y-auto space-y-2 pr-1 pb-4">
+                                {h.itemsSnapshot && h.itemsSnapshot.length > 0 ? (
+                                  h.itemsSnapshot.map((item: any) => (
+                                    <div key={item.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                      <div>
+                                        <p className="text-xs font-bold text-slate-700 truncate">{item.name}</p>
+                                        <span className="text-[10px] text-slate-400 font-semibold">{item.quantity} {item.unit} | {item.category}</span>
+                                      </div>
+                                      <span className="text-xs font-black text-slate-800">
+                                        {item.price > 0 ? `R$ ${item.price.toFixed(2).replace('.', ',')}` : '-'}
+                                      </span>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <p className="text-xs text-slate-400 italic text-center py-4">Nenhum item arquivado.</p>
+                                )}
+                              </div>
+                            </Dialog.Content>
+                          </Dialog.Portal>
+                        </Dialog.Root>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
