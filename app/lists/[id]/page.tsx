@@ -361,9 +361,17 @@ export default function ListDetail() {
     e.preventDefault();
     if (!newItemName.trim() || !user) return;
 
+    const normalizedNewName = newItemName.trim().toLowerCase();
+
     try {
       const price = parseCurrencyToNumber(newItemPrice);
       if (editingItem) {
+        const nameExists = items.some(item => item.id !== editingItem.id && item.name.trim().toLowerCase() === normalizedNewName);
+        if (nameExists) {
+          alert("Este item já foi cadastrado na lista.");
+          return;
+        }
+
         await updateDoc(doc(db, "lists", id, "items", editingItem.id), {
           name: newItemName.trim(),
           quantity: newItemQuantity,
@@ -377,6 +385,12 @@ export default function ListDetail() {
         const updatedItems = items.map(i => i.id === editingItem.id ? { ...i, price, category: newItemCategory } : i);
         syncListTotals(updatedItems);
       } else {
+        const nameExists = items.some(item => item.name.trim().toLowerCase() === normalizedNewName);
+        if (nameExists) {
+          alert("Este item já foi cadastrado na lista.");
+          return;
+        }
+
         const newDoc = await addDoc(collection(db, "lists", id, "items"), {
           name: newItemName.trim(),
           quantity: newItemQuantity,
