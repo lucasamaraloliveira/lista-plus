@@ -107,6 +107,17 @@ export default function ListDetail() {
     return parseInt(digits, 10) / 100;
   };
 
+  const getItemTotal = (item: ShoppingItem) => {
+    const subItems = item.subItems || [];
+    if (subItems.length === 0) {
+      return (item.price || 0) * item.quantity;
+    }
+    const subItemsTotal = subItems.reduce((sum, si) => sum + (si.price * si.quantity), 0);
+    const subItemsQty = subItems.reduce((sum, si) => sum + si.quantity, 0);
+    const remainingQty = Math.max(0, item.quantity - subItemsQty);
+    return subItemsTotal + (remainingQty * (item.price || 0));
+  };
+
   const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Delete states
@@ -326,16 +337,11 @@ export default function ListDetail() {
     if (!id || !user) return;
 
     const currentTotal = updatedItems.reduce((acc, item) => {
-      const itemTotal = (item.subItems && item.subItems.length > 0)
-        ? (item.price || 0)
-        : ((item.price || 0) * item.quantity);
-      return acc + itemTotal;
+      return acc + getItemTotal(item);
     }, 0);
     const catTotals: Record<string, number> = {};
     updatedItems.forEach(item => {
-      const itemTotal = (item.subItems && item.subItems.length > 0)
-        ? (item.price || 0)
-        : ((item.price || 0) * item.quantity);
+      const itemTotal = getItemTotal(item);
       if (itemTotal > 0) {
         catTotals[item.category] = (catTotals[item.category] || 0) + itemTotal;
       }
@@ -382,7 +388,14 @@ export default function ListDetail() {
         });
         
         // Sync total
-        const updatedItems = items.map(i => i.id === editingItem.id ? { ...i, price, category: newItemCategory } : i);
+        const updatedItems = items.map(i => i.id === editingItem.id ? { 
+          ...i, 
+          name: newItemName.trim(),
+          quantity: newItemQuantity,
+          unit: newItemUnit,
+          price, 
+          category: newItemCategory 
+        } : i);
         syncListTotals(updatedItems);
       } else {
         const nameExists = items.some(item => item.name.trim().toLowerCase() === normalizedNewName);
@@ -503,12 +516,11 @@ export default function ListDetail() {
     try {
       await updateDoc(doc(db, "lists", id, "items", itemId), {
         subItems: updatedSubItems,
-        price: newTotal,
         updatedAt: serverTimestamp()
       });
 
       // Sync total
-      const updatedItems = items.map(i => i.id === itemId ? { ...i, subItems: updatedSubItems, price: newTotal } : i);
+      const updatedItems = items.map(i => i.id === itemId ? { ...i, subItems: updatedSubItems } : i);
       syncListTotals(updatedItems);
 
       // Ensure the item is expanded so the new brand is visible
@@ -561,12 +573,11 @@ export default function ListDetail() {
     try {
       await updateDoc(doc(db, "lists", id, "items", itemId), {
         subItems: updatedSubItems,
-        price: newTotal,
         updatedAt: serverTimestamp()
       });
 
       // Sync total
-      const updatedItems = items.map(i => i.id === itemId ? { ...i, subItems: updatedSubItems, price: newTotal } : i);
+      const updatedItems = items.map(i => i.id === itemId ? { ...i, subItems: updatedSubItems } : i);
       syncListTotals(updatedItems);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `lists/${id}/items/${itemId}/subitems/${subItemId}`);
@@ -729,20 +740,20 @@ export default function ListDetail() {
   };
 
   const totalValue = items.reduce((acc, item) => {
-    const itemTotal = (item.subItems && item.subItems.length > 0)
-      ? (item.price || 0)
-      : ((item.price || 0) * item.quantity);
-    return acc + itemTotal;
+    return acc + getItemTotal(item);
   }, 0);
   
   const purchasedValue = items.reduce((acc, item) => {
+    if (item.purchased) {
+      return acc + getItemTotal(item);
+    }
     if (item.subItems && item.subItems.length > 0) {
       const siTotal = item.subItems
         .filter(si => si.purchased)
         .reduce((sum, si) => sum + (si.price * si.quantity), 0);
       return acc + siTotal;
     }
-    return acc + (item.purchased ? ((item.price || 0) * item.quantity) : 0);
+    return acc;
   }, 0);
 
   const unpurchasedValue = totalValue - purchasedValue;
@@ -1037,8 +1048,8 @@ export default function ListDetail() {
                               {/* Price */}
                               <div className="text-right shrink-0">
                                 <p className="font-bold text-slate-800 text-sm sm:text-base">
-                                  {item.price > 0 
-                                    ? `R$ ${(item.subItems && item.subItems.length > 0 ? item.price : item.price * item.quantity).toFixed(2).replace('.', ',')}` 
+                                  {getItemTotal(item) > 0 
+                                    ? `R$ ${getItemTotal(item).toFixed(2).replace('.', ',')}` 
                                     : '-'}
                                 </p>
                                  {item.subItems && item.subItems.length > 0 && (
@@ -1161,9 +1172,7 @@ export default function ListDetail() {
             <h3 className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Comprado (Total: R$ {purchasedValue.toFixed(2).replace('.', ',')})</h3>
             <div className="space-y-3 mt-4">
               {items.filter(i => i.purchased).map(item => {
-                const itemTotal = (item.subItems && item.subItems.length > 0)
-                  ? item.price
-                  : item.price * item.quantity;
+                const itemTotal = getItemTotal(item);
                 return (
                   <div key={item.id} className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                     <span className="text-sm font-semibold text-slate-600 truncate mr-2">{item.name}</span>
@@ -1187,9 +1196,7 @@ export default function ListDetail() {
               {(() => {
                 const catTotals: Record<string, number> = {};
                 items.forEach(item => {
-                  const itemTotal = (item.subItems && item.subItems.length > 0)
-                    ? (item.price || 0)
-                    : ((item.price || 0) * item.quantity);
+                  const itemTotal = getItemTotal(item);
                   if (itemTotal > 0) {
                     catTotals[item.category] = (catTotals[item.category] || 0) + itemTotal;
                   }
